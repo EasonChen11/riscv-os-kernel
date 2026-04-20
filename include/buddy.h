@@ -1,0 +1,37 @@
+#ifndef __BUDDY_H__
+#define __BUDDY_H__
+
+#include "list.h"
+
+#define PAGE_SIZE (1 << 12) // 4KB pages
+#define BUDDY_MAX_ORDER 16
+// #define BUDDY_MAX_PAGES (1 << BUDDY_MAX_ORDER) // 16K pages = 64MB total memory 已經使用 g_buddy_total_pages 來動態決定
+
+#define BUDDY_F (-1)   // free block 的非起點頁（不在任何 free list 上）
+#define BUDDY_X (-2)   // allocated block 的非起點頁 
+
+struct frame {
+    int order;                  // The order of the block (0 for 1 page, 1 for 2 pages, etc.)
+    int allocated;              // 0 = free 起點 / 中段; 1 = allocated 起點
+    struct list_head freelist;  // List node for linking frames in the free list
+};
+
+extern unsigned long g_buddy_base_addr;
+extern unsigned long g_buddy_total_pages;
+
+void buddy_init(void);
+void *buddy_alloc_pages(int order);
+void buddy_free_pages(void *addr);
+void buddy_register_range(unsigned long base_addr, unsigned long size);
+void buddy_reset_step(void); // 重置 log step 編號為 1，供外部測試腳本在跑前呼叫
+
+// O(1) address <-> page index helpers (shared with dynalloc)
+static inline unsigned long buddy_addr_to_page_idx(unsigned long addr) {
+    return (addr - g_buddy_base_addr) / PAGE_SIZE;
+}
+
+static inline unsigned long buddy_page_idx_to_addr(unsigned long idx) {
+    return g_buddy_base_addr + idx * PAGE_SIZE;
+}
+
+#endif // __BUDDY_H__

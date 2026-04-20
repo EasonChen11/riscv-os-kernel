@@ -1,0 +1,12 @@
+kernel
+kernel.elf
+kernel.bin
+kernel.fit
+screenlog.0
+*.o
+build/
+note.md
+NOTES.md
+tutorial.md
+kernel.its.note
+qemu.dtb

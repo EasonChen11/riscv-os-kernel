@@ -1,0 +1,30 @@
+#include "list.h"
+// Initializes a list head to point to itself
+void init_list_head(struct list_head *head){
+    head->next = head;
+    head->prev = head;
+}
+
+static inline void __list_add(struct list_head *new, struct list_head *prev, struct list_head *next){
+    next->prev = new;
+    new->next = next;
+    new->prev = prev;
+    prev->next = new;
+}
+// Adds a new entry between the specified head and the next entry
+void list_add(struct list_head *new, struct list_head *head){
+    __list_add(new, head, head->next);
+}
+
+static inline void __list_del(struct list_head *prev, struct list_head *next){
+    next->prev = prev;
+    prev->next = next;
+}
+// Deletes an entry from the list
+void list_del(struct list_head *entry){
+    __list_del(entry->prev, entry->next);
+}
+// Checks if the list is empty, 如果循環代表空的
+int list_empty(const struct list_head *head){
+    return head->next == head;
+}
