@@ -113,7 +113,7 @@ static void freelist_add(struct frame *frame, int order) {
     unsigned long index = frame_to_idx(frame);
     list_add(&frame->freelist, &free_lists[order]);
     free_counts[order]++;
-    log_add(index, order); // Log the addition of the block to the free list
+    // log_add(index, order); // Log the addition of the block to the free list
 }
 
 static void freelist_del(struct frame *frame) {
@@ -121,7 +121,7 @@ static void freelist_del(struct frame *frame) {
     unsigned long index = frame_to_idx(frame);
     list_del(&frame->freelist);
     free_counts[order]--;
-    log_remove(index, order); // Log the removal of the block from the free list
+    // log_remove(index, order); // Log the removal of the block from the free list
 }
 
 void buddy_register_range(unsigned long base_addr, unsigned long size) {
@@ -212,7 +212,7 @@ void *buddy_alloc_pages(int order) {
 
     unsigned long index = frame_to_idx(target_frame);
     unsigned long addr = buddy_page_idx_to_addr(index);
-    log_alloc(addr, order, index); // Log the allocation of the page
+    // log_alloc(addr, order, index); // Log the allocation of the page
     dump_counts(); // Debug: dump free block counts
     return (void *)(addr);
 }
@@ -240,7 +240,7 @@ void buddy_free_pages(void *addr) {
             break; // buddy 是 allocated、F/X、或不同 order → 不可合併
         }
         freelist_del(buddy_frame); // 從 free list 移除 buddy
-        log_merge(index, buddy_index, order + 1); // Log the merging of blocks
+        // log_merge(index, buddy_index, order + 1); // Log the merging of blocks
         if (buddy_index < index) {
             index = buddy_index; // Keep the lower index as the head of the merged block
         }
@@ -248,7 +248,7 @@ void buddy_free_pages(void *addr) {
     }
 
     unsigned long block_addr = buddy_page_idx_to_addr(index);
-    log_free(block_addr, order, index); // Log the freeing of the page
+    // log_free(block_addr, order, index); // Log the freeing of the page
 
     freelist_add(idx_to_frame(index), order);
     dump_counts(); // Debug: dump free block counts

@@ -111,7 +111,7 @@ void *dynalloc_alloc(unsigned int size) {
     struct list_head *chunk_node = pool->free_chunks.next;
     list_del(chunk_node);
     page_descriptors[buddy_addr_to_page_idx((unsigned long)chunk_node)].in_use++;
-    log_chunk_alloc((unsigned long)chunk_node, pool->chunk_size);
+    // log_chunk_alloc((unsigned long)chunk_node, pool->chunk_size);
     return (void *)chunk_node;
 }
 
@@ -135,7 +135,7 @@ void dynalloc_free(void *ptr) {
     struct list_head *chunk_node = (struct list_head *)ptr;
     list_add(chunk_node, &pool->free_chunks);
     page_descriptors[page_index].in_use--;
-    log_chunk_free(addr, pool->chunk_size);
+    // log_chunk_free(addr, pool->chunk_size);
 
     // 如果該 page 上的 chunk 都是 free 的，回收整個 page 給 buddy allocator
     if (page_descriptors[page_index].in_use == 0) {
