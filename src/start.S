@@ -69,6 +69,9 @@ clear_bss_done:
     # --- Set up stack ---
     la   sp, _end
 
+    # --- Set trap vector ---
+    call add_trap
+
     # --- Call start_kernel ---
     mv   a0, s0            # pass hart id
     mv   a1, s1            # pass dtb address

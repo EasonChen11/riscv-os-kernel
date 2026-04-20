@@ -6,6 +6,7 @@
 #include "bootloader.h"
 #include "buddy.h"
 #include "dynalloc.h"
+#include "trap.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -112,6 +113,8 @@ static void exec_cmd(const char* cmd) {
         cmd_load();
     } else if (strcmp(cmd, "mmtest") == 0) {
         cmd_mmtest();
+    } else if (strncmp(cmd, "exec ", 5) == 0) {
+        exec_umode(cmd + 5);
     } else {
         cmd_unknown(cmd);
     }
