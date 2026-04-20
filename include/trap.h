@@ -2,6 +2,10 @@
 #define TRAP_H
 
 #include <stdint.h>
+#define SCAUSE_INTERRUPT_BIT (1UL << 63)
+#define SCAUSE_CODE_MASK (~(1UL << 63))
+#define ENV_CALL_FROM_UMODE 8
+#define INT_SUP_TIMER 5
 
 /* kernel stack frame saved by handle_exception (35 * 8 = 280 bytes)
  * layout must match the sd/ld offsets in start.S handle_exception */

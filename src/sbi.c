@@ -72,3 +72,12 @@ long sbi_get_imp_version(void) {
     struct sbiret ret = sbi_ecall(SBI_EXT_BASE, SBI_EXT_BASE_GET_IMP_VERSION, 0, 0, 0, 0, 0, 0);
     return ret.value;
 }
+
+/**
+ * sbi_set_timer() - Set the SBI timer.
+ *
+ * @stime_value: The value for the timer.
+ */
+void sbi_set_timer(unsigned long stime_value){
+    sbi_ecall(SBI_EXT_SET_TIMER, 0, stime_value, 0, 0, 0, 0, 0);
+}

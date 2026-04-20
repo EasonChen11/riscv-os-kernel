@@ -5,6 +5,7 @@
 #include "dynalloc.h"
 #include "mem_reserve.h"
 #include "startup.h"
+#include "timer.h"
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
 
@@ -33,6 +34,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 4: 交棒 buddy / dynalloc，它們會從 startup heap 動態拿 frame_array / page_descriptors
     buddy_init();
     dynalloc_init();
+
+    // timer
+    timer_init();
 
     shell_init();
     while (1) {

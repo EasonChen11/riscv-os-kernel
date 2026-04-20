@@ -243,7 +243,20 @@ int fdt_next_subnode(const void* fdt, int node_offset) {
     }
 }
 
-
+unsigned long fdt_get_cpu_freq(const void* fdt) {
+    int cpu_offset = fdt_path_offset(fdt, "/cpus");
+    if (cpu_offset < 0) {
+        return 0;
+    }
+    int ac, sc;
+    fdt_get_cells(fdt, cpu_offset, &ac, &sc); // 根節點的 #address-cells / #size-cells 定義了 cpu node 中 reg property 的格式
+    int len = 0;
+    const void* prop = fdt_getprop(fdt, cpu_offset, "timebase-frequency", &len);
+    if (!prop || len < 4) {
+        return 0;
+    }
+    return fdt_read_cells((const uint32_t*)prop, ac); // timebase-frequency property 的值是一個 cell，cell 的大小由 #address-cells 定義，通常是 1 cell = 4 bytes
+}
 
 const void* fdt_getprop(const void* fdt, int nodeoffset, const char* name, int* lenp) {
     struct fdt_header* header = (struct fdt_header*)fdt;

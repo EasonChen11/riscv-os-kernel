@@ -49,4 +49,6 @@ int fdt_get_reg(const void* fdt, int parent_offset, int node_offset, int index,
 int fdt_first_subnode(const void* fdt, int parent_offset);
 int fdt_next_subnode(const void* fdt, int node_offset);
 
+unsigned long fdt_get_cpu_freq(const void* fdt);
+
 #endif
