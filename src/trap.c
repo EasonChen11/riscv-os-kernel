@@ -5,8 +5,9 @@
 /* Called from handle_exception (assembly) with the saved trap frame. */
 // file :file:///Users/eason/Downloads/riscv-spec.html#scause
 void do_trap(struct trap_frame *regs) {
-    long cause_code = regs->scause & SCAUSE_CODE_MASK; // lower 63 bits is the cause code
-    long is_interrupt = regs->scause & SCAUSE_INTERRUPT_BIT; // bit 63 is the interrupt bit
+    // scause bit 63 = interrupt/exception 區分；低 63 位 = cause code
+    long cause_code = regs->scause & SCAUSE_CODE_MASK;
+    long is_interrupt = regs->scause & SCAUSE_INTERRUPT_BIT;
     if (is_interrupt) {
         if (cause_code == INT_SUP_TIMER) { // Supervisor timer interrupt
             handle_timer_interrupt();
