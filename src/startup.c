@@ -11,6 +11,14 @@ void startup_range(void *start, void *end) {
     heap_current = heap_start;
 }
 
+void log_startup_heap(unsigned long heap_size) {
+    uart_puts("[Startup] Heap at [");
+    uart_hex(heap_start);
+    uart_puts(", ");
+    uart_hex(heap_start + heap_size);
+    uart_puts(")\n");
+}
+
 // 在可用 RAM 內、避開所有已 reserve 的區間，找第一塊 size bytes、4KB 對齊的空洞作為 heap。
 // 搜尋下界取 max(g_kernel_end, g_fdt_base+g_fdt_size, g_initrd_end)——全部來自 linker 符號或 /chosen DT，
 // 避免硬編碼 OpenSBI 位址；自然跳過位於 RAM 起點的 firmware 區段
@@ -32,11 +40,7 @@ void startup_init(unsigned long heap_size) {
     }
     memory_reserve(start, heap_size);
     startup_range((void*)start, (void*)(start + heap_size));
-    uart_puts("[Startup] Heap at [");
-    uart_hex(start);
-    uart_puts(", ");
-    uart_hex(start + heap_size);
-    uart_puts(")\n");
+    // log_startup_heap(heap_size);
 }
 
 void *startup_alloc(unsigned long size, unsigned long align) {

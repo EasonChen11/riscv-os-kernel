@@ -24,6 +24,7 @@ static void cmd_help(void) {
     uart_puts("  cat   - print file content. usage: cat <filename>\n");
     uart_puts("  load  - load kernel image via UART.\n");
     uart_puts("  mmtest - run buddy allocator test.\n");
+    uart_puts("  exec   - execute user program. usage: exec <filename>\n");
 }
 
 // 對照 lab3.rst test_alloc_1：透過 dynalloc 統一 API 測試 buddy + chunk pool。

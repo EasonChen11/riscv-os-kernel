@@ -13,6 +13,14 @@ struct reserved_region {
 static struct reserved_region regions[MAX_RESERVED_REGIONS];
 static int region_count = 0;
 
+void log_reserved_regions(unsigned long aligned_start, unsigned long aligned_end) {
+    uart_puts("[Reserve] Reserve address [");
+    uart_hex(aligned_start);
+    uart_puts(", ");
+    uart_hex(aligned_end);
+    uart_puts(")\n");
+}
+
 // 將 [start, start+size) 涵蓋的頁面登記為 reserved：start 向下、end 向上對齊到 page boundary，
 // 再 push 進 regions 陣列。不依賴任何 allocator，可在 buddy / startup 初始化之前呼叫
 void memory_reserve(unsigned long start, unsigned long size) {
@@ -27,11 +35,7 @@ void memory_reserve(unsigned long start, unsigned long size) {
     regions[region_count].end   = aligned_end;
     region_count++;
 
-    uart_puts("[Reserve] Reserve address [");
-    uart_hex(aligned_start);
-    uart_puts(", ");
-    uart_hex(aligned_end);
-    uart_puts(")\n");
+    // log_reserved_regions(aligned_start, aligned_end);
 }
 
 void memory_reserve_fdt_reserved_mem(const void* fdt) {
