@@ -4,7 +4,7 @@
 
 // 開機預設值，DTB 解析前就能用
 unsigned long uart_base = 0x0L;
-
+unsigned long uart_shift = 0x0L;  // 0 for 16550A(QEMU), 2 for DW UART (4-byte stride)
 void uart_init(const void* fdt) {
     // 從 DTB 讀取 UART base address
     // QEMU: /soc/uart, OrangePi RV2: /soc/serial
@@ -28,9 +28,17 @@ void uart_init(const void* fdt) {
         uart_puts("uart_init: reg parse failed\n");
         return;
     }
-
     if (addr != 0)
         uart_base = addr;
+
+    // find reg-shift
+    int shift_size = 0;
+    const void* prop = fdt_getprop(fdt, offset, "reg-shift", &shift_size);
+    if (prop){
+        uart_shift = fdt_read_cells((const uint32_t*)prop, 1); // reg-shift property 的值是一個 cell，cell 的大小由 #address-cells 定義，通常是 1 cell = 4 bytes
+    }else {
+        uart_shift = 0x0L; // 如果 DTB 沒有 reg-shift 屬性，預設為 0（即寄存器地址不偏移)
+    }
 }
 
 char uart_getc() {
