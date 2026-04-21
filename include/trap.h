@@ -48,6 +48,11 @@ struct trap_frame {
     uint64_t stval;    /* 8 * 34 */
 };
 
+// 開啟 S-mode trap 子系統的全域中斷開關 sstatus.SIE。
+// 各 driver 的 sie.X (STIE/SEIE/...) 由 driver 自行啟用；本函式只負責總開關。
+// 必須在 timer_init / plic_init 之前呼叫。
+void trap_init(void);
+
 void exec_umode(const char *filename);
 void do_trap(struct trap_frame *regs);
 

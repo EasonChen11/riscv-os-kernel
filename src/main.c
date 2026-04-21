@@ -7,6 +7,7 @@
 #include "startup.h"
 #include "timer.h"
 #include "plic.h"
+#include "trap.h"
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
 
@@ -35,6 +36,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 4: 交棒 buddy / dynalloc，它們會從 startup heap 動態拿 frame_array / page_descriptors
     buddy_init();
     dynalloc_init();
+
+    // trap 子系統總開關：開 sstatus.SIE，各 driver 再自行開對應 sie.X
+    trap_init();
 
     // timer
     timer_init();

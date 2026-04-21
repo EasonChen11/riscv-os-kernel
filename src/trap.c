@@ -3,6 +3,11 @@
 #include "timer.h"
 #include "plic.h"
 
+// sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
+void trap_init(void) {
+    asm volatile("csrrs zero, sstatus, %0" :: "r"(1 << 1));
+}
+
 /* Called from handle_exception (assembly) with the saved trap frame. */
 // file :file:///Users/eason/Downloads/riscv-spec.html#scause
 void do_trap(struct trap_frame *regs) {
@@ -23,12 +28,7 @@ void do_trap(struct trap_frame *regs) {
         }
     } else {
         if (cause_code == ENV_CALL_FROM_UMODE) { // scause=8 means ecall from U-mode
-            /* ecall from U-mode */
-            // uart_puts("[trap] ecall  sepc=0x");
-            // uart_hex(regs->sepc);
             uart_puts("=== S-Mode Trap ===\n");
-        regs->sepc += 4;  /* skip ecall instruction, resume after it */
-        } else {
             uart_puts("scause=");
             uart_int(regs->scause);
             uart_putc('\n');
@@ -38,8 +38,11 @@ void do_trap(struct trap_frame *regs) {
             uart_puts(" stval=0x");
             uart_int(regs->stval);
             uart_putc('\n');
+            regs->sepc += 4;  /* skip ecall instruction, resume after it */
+        } else {
+            uart_puts("Unknown exception: scause=");
+            uart_int(regs->scause);
+            uart_putc('\n');
+        }
     }
-    }
-
-    
 }
