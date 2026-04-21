@@ -1,27 +1,20 @@
 #include "uart.h"
 #include "fdt.h"
 #include "string.h"
+#include "plic.h"
 
-// 開機預設值，DTB 解析前就能用
-unsigned long uart_base = 0x0L;
-unsigned long uart_shift = 0x0L;  // 0 for 16550A(QEMU), 2 for DW UART (4-byte stride)
+unsigned long uart_base  = 0x0L;   // DTB 解析前為 0；解析後填入
+unsigned long uart_shift = 0x0L;   // 0 for 16550A(QEMU), 2 for DW UART (4-byte stride)
+
+static unsigned int uart_irq_num = 0;   // UART 對 PLIC 的 IRQ 號（由 uart_init 從 DTB 讀）
+
 void uart_init(const void* fdt) {
-    // 從 DTB 讀取 UART base address
     // QEMU: /soc/uart, OrangePi RV2: /soc/serial
-#ifdef QEMU
     int offset = fdt_path_offset(fdt, "/soc/uart");
-    if (offset < 0) { // QEMU 的 DTB 可能用 /soc/serial 作為 UART 節點名稱
+    if (offset < 0) {
         offset = fdt_path_offset(fdt, "/soc/serial");
     }
-#else
-    int offset = fdt_path_offset(fdt, "/soc/serial");
-#endif
-    if (offset < 0) {
-        uart_puts("uart_init: node not found\n");
-        return;
-    }
 
-    // UART 的 reg 由其 parent (/soc) 的 #address-cells / #size-cells 決定。
     int soc = fdt_path_offset(fdt, "/soc");
     unsigned long addr = 0, size = 0;
     if (fdt_get_reg(fdt, soc, offset, 0, &addr, &size) < 0) {
@@ -31,37 +24,25 @@ void uart_init(const void* fdt) {
     if (addr != 0)
         uart_base = addr;
 
-    // find reg-shift
+    // reg-shift：16550A 沒這屬性預設 0；DW/SiFive 為 2
     int shift_size = 0;
     const void* prop = fdt_getprop(fdt, offset, "reg-shift", &shift_size);
-    if (prop){
-        uart_shift = fdt_read_cells((const uint32_t*)prop, 1); // reg-shift property 的值是一個 cell，cell 的大小由 #address-cells 定義，通常是 1 cell = 4 bytes
-    }else {
-        uart_shift = 0x0L; // 如果 DTB 沒有 reg-shift 屬性，預設為 0（即寄存器地址不偏移)
+    if (prop) {
+        uart_shift = fdt_read_cells((const uint32_t*)prop, 1);
+    } else {
+        uart_shift = 0x0L;
+    }
+
+    // interrupts：UART 對 PLIC 的 IRQ 號
+    int irq_size = 0;
+    const void* irq_prop = fdt_getprop(fdt, offset, "interrupts", &irq_size);
+    if (irq_prop) {
+        uart_irq_num = fdt_read_cells((const uint32_t*)irq_prop, 1);
     }
 }
 
-char uart_getc() {
-    while ((*UART_LSR & LSR_DR) == 0)
-        ;
-    char c = (char)*UART_RBR;
-    return c == '\r' ? '\n' : c;
-}
-
-unsigned char uart_getb() {
-    while ((*UART_LSR & LSR_DR) == 0)
-        ;
-    return *UART_RBR;
-}
-
-void uart_putc(char c) {
-    if (c == '\n')
-        uart_putc('\r');
-
-    while ((*UART_LSR & LSR_TDRQ) == 0)
-        ;
-    *UART_THR = c;
-}
+// uart_putc 在 #if 分支裡個別實作（polling / interrupt 行為不同）
+void uart_putc(char c);
 
 void uart_puts(const char* s) {
     while (*s)
@@ -73,7 +54,7 @@ void uart_hex(unsigned long h) {
     unsigned long n;
     for (int c = 60; c >= 0; c -= 4) {
         n = (h >> c) & 0xf;
-        n += n > 9 ? 0x57 : '0'; // 0x57 = 87 = 'a' - 10, 0-9 → '0'-'9', 10-15 → 'a'-'f'
+        n += n > 9 ? 0x57 : '0';
         uart_putc(n);
     }
 }
@@ -92,3 +73,160 @@ void uart_int(unsigned long n) {
     for (int j = i - 1; j >= 0; j--)
         uart_putc(buf[j]);
 }
+
+#if MODE == 0
+// ======== Polling TX / RX ========
+
+void uart_putc(char c) {
+    if (c == '\n')
+        uart_putc('\r');
+    while ((*UART_LSR & LSR_TDRQ) == 0)
+        ;
+    *UART_THR = c;
+}
+
+char uart_getc(void) {
+    while ((*UART_LSR & LSR_DR) == 0)
+        ;
+    char c = (char)*UART_RBR;
+    return c == '\r' ? '\n' : c;
+}
+
+bool uart_try_getc(char *out) {
+    if ((*UART_LSR & LSR_DR) == 0) return false;
+    char c = (char)*UART_RBR;
+    *out = (c == '\r') ? '\n' : c;
+    return true;
+}
+
+unsigned char uart_getb(void) {
+    while ((*UART_LSR & LSR_DR) == 0)
+        ;
+    return *UART_RBR;
+}
+
+// polling 模式不使用 PLIC 中斷，提供 no-op 讓 main/trap 可無條件呼叫
+void uart_irq_init(void) {}
+void uart_handle_irq(unsigned int irq) { (void)irq; }
+
+#else
+// ======== Interrupt TX / RX ========
+
+// SPSC ring：RX 的 producer 是 ISR、consumer 是 shell；TX 反過來
+// empty: head == tail；full: (head + 1) % SZ == tail（留一格區分）
+#define RX_BUF_SZ 128
+static volatile unsigned char rx_buf[RX_BUF_SZ];
+static volatile unsigned int  rx_head;   // ISR 寫入點
+static volatile unsigned int  rx_tail;   // shell 讀取點
+
+#define TX_BUF_SZ 128
+static volatile unsigned char tx_buf[TX_BUF_SZ];
+static volatile unsigned int  tx_head;   // uart_putc 寫入點
+static volatile unsigned int  tx_tail;   // ISR 讀取點
+
+static inline void rx_put(unsigned char c) {
+    unsigned int next = (rx_head + 1) % RX_BUF_SZ;
+    if (next == rx_tail) return;   // 滿了丟最新，避免蓋掉 shell 還沒讀的歷史字元
+    rx_buf[rx_head] = c;
+    rx_head = next;
+}
+
+static inline bool rx_get(unsigned char *c) {
+    if (rx_head == rx_tail) return false;
+    *c = rx_buf[rx_tail];
+    rx_tail = (rx_tail + 1) % RX_BUF_SZ;
+    return true;
+}
+
+static inline bool tx_is_full(void)  { return ((tx_head + 1) % TX_BUF_SZ) == tx_tail; }
+static inline bool tx_is_empty(void) { return tx_head == tx_tail; }
+
+static inline void tx_put(unsigned char c) {
+    tx_buf[tx_head] = c;
+    tx_head = (tx_head + 1) % TX_BUF_SZ;
+}
+
+static inline bool tx_get(unsigned char *c) {
+    if (tx_head == tx_tail) return false;
+    *c = tx_buf[tx_tail];
+    tx_tail = (tx_tail + 1) % TX_BUF_SZ;
+    return true;
+}
+
+// 關 / 還原 sstatus.SIE（保護 IER 與 tx_head 不被 ISR 搶）
+static inline unsigned long irq_save(void) {
+    unsigned long s;
+    asm volatile("csrrc %0, sstatus, %1" : "=r"(s) : "i"(1 << 1)); // clear sstatus.SIE，關閉全域中斷
+    return s;
+}
+static inline void irq_restore(unsigned long s) {
+    asm volatile("csrs sstatus, %0" :: "r"(s & (1 << 1)));
+}
+
+void uart_irq_init(void) {
+    *UART_IER = (1 << 0);                      // bit0 ERBFI：只開 RX；TX 的 ETBEI 留給 uart_putc 動態開
+    *UART_MCR |= (1 << 3);                     // bit3 OUT2：把 IRQ 接出到 PLIC（QEMU virt 必要）
+    *UART_FCR = (1 << 0) | (1 << 1) | (1 << 2);// bit0 FIFO enable + bit1 clr RX + bit2 clr TX
+    plic_enable_irq(uart_irq_num, 1);
+}
+
+// 由 trap 的 INT_SUP_EXT 分支呼叫。一次 IRQ 可能同時帶 RX 和 TX 事件，都要處理
+void uart_handle_irq(unsigned int irq) {
+    if (irq != uart_irq_num) return;
+
+    // RX：抽乾 FIFO 到 ring
+    while (*UART_LSR & LSR_DR) {
+        unsigned char c = *UART_RBR;       // 讀 RBR 會清 LSR.DR；ISR 是唯一讀者
+        rx_put(c);
+    }
+
+    // TX：THR empty 時把 ring 搬到 THR；ring 空就關 ETBEI 避免 livelock
+    while (!tx_is_empty() && (*UART_LSR & LSR_TDRQ)) {
+        unsigned char c;
+        tx_get(&c);
+        *UART_THR = c;
+    }
+    if (tx_is_empty()) {
+        *UART_IER &= ~(1 << 1);                // 清 ETBEI
+    }
+}
+
+void uart_putc(char c) {
+    if (c == '\n')
+        uart_putc('\r');
+
+    // ring 滿則 spin 等 ISR 消費；中斷保持開著讓 ISR 能 drain
+    while (tx_is_full())
+        ;
+
+    unsigned long saved = irq_save();      // 保護 tx_head 與 IER 不被 ISR 搶
+    tx_put((unsigned char)c);
+    *UART_IER |= (1 << 1);                     // 啟 ETBEI：THR empty 時 ISR 會來搬
+    irq_restore(saved);
+}
+
+bool uart_try_getc(char *out) {
+    unsigned char c;
+    if (!rx_get(&c)) return false;
+    *out = (c == '\r') ? '\n' : (char)c;
+    return true;
+}
+
+char uart_getc(void) {
+    char c;
+    while (!uart_try_getc(&c))
+        ;                                  // spin；之後可換成 wfi
+    return c;
+}
+
+// bootloader 專用：讀 raw byte（不做 \r→\n 轉換）。
+// interrupt 模式下 ISR 是 RBR 唯一讀者，這裡只能從 rx ring 取；
+// rx ring 存的是 ISR 直接從 RBR 讀來的原始 byte，沒經過 \r→\n 翻譯，符合 bootloader 語意
+unsigned char uart_getb(void) {
+    unsigned char c;
+    while (!rx_get(&c))
+        ;
+    return c;
+}
+
+#endif

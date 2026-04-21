@@ -43,8 +43,11 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // timer
     timer_init();
 
-    // PLIC（先做 driver smoke test，還沒接 UART IRQ）
+    // PLIC
     plic_init(fdt, hart_id);
+
+    // UART：polling 模式為 no-op；interrupt 模式下開 IER/MCR/FCR 並在 PLIC 啟用 UART IRQ
+    uart_irq_init();
 
     shell_init();
     while (1) {

@@ -1,22 +1,17 @@
 #ifndef UART_H
 #define UART_H
 
-// 預設 UART base address（開機時用，DTB 解析前）
-// #ifdef QEMU
-// #define UART_BASE_DEFAULT 0x10000000UL
-// #define UART_LSR_OFFSET   0x5
-// #else
-// #define UART_BASE_DEFAULT 0xD4017000UL
-// #define UART_LSR_OFFSET   0x14
-// #endif
+#include <stdbool.h>
 
-// 動態 UART base address（DTB 解析後會更新）
+#define MODE 1 // 0 for polling mode, 1 for interrupt mode
+
+// 動態 UART base / reg-shift（uart_init 從 DTB 填入）
 extern unsigned long uart_base;
-extern unsigned long uart_shift; // 0 for 16550A(QEMU), 2 for SiFive UART (4 bytes per register)
+extern unsigned long uart_shift;   // 0 for 16550A(QEMU), 2 for DW/SiFive UART (4-byte stride)
 
 enum UART_REG {
     RBR = 0,  // Receiver Buffer Register (read-only)
-    THR = 0, // Transmitter Holding Register (write-only)
+    THR = 0,  // Transmitter Holding Register (write-only)
     IER = 1,  // Interrupt Enable Register
     IIR = 2,  // Interrupt Identification Register (read-only)
     FCR = 2,  // FIFO Control Register (write-only)
@@ -34,16 +29,23 @@ enum UART_REG {
 #define UART_MCR  ((volatile unsigned char*)(uart_base + (MCR << uart_shift)))
 #define UART_LSR  ((volatile unsigned char*)(uart_base + (LSR << uart_shift)))
 
-
 #define LSR_DR    (1 << 0)  // data ready
 #define LSR_TDRQ  (1 << 5)  // transmitter holding register empty
 
+// 初始化 / 輸出（兩種模式共用）
+void uart_init(const void* fdt);
 void uart_putc(char c);
-char uart_getc();
-unsigned char uart_getb();
 void uart_puts(const char* s);
 void uart_hex(unsigned long h);
 void uart_int(unsigned long n);
-void uart_init(const void* fdt);
+
+// 輸入（polling / interrupt 由 MODE 切換實作）
+char          uart_getc(void);             // 阻塞讀一字
+bool          uart_try_getc(char *out);    // 非阻塞；無字回 false
+unsigned char uart_getb(void);             // 讀 raw byte，不做 \r→\n；bootloader 用
+
+// Interrupt 專用。polling 模式下定義為 no-op，main/trap 可無條件呼叫
+void uart_irq_init(void);
+void uart_handle_irq(unsigned int irq);
 
 #endif

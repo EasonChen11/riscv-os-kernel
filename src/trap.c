@@ -18,9 +18,11 @@ void do_trap(struct trap_frame *regs) {
         if (cause_code == INT_SUP_TIMER) { // Supervisor timer interrupt
             handle_timer_interrupt();
         } else if (cause_code == INT_SUP_EXT) { // Supervisor external interrupt
-            // Handle external interrupt
             unsigned int irq = plic_claim();
-
+            if (irq) {
+                uart_handle_irq(irq);      // 內部判斷是不是 UART 的 IRQ
+                plic_complete(irq);        // 一定要 complete，否則 PLIC 不會再送同號中斷
+            }
         } else {
             uart_puts("Unknown interrupt: scause=");
             uart_int(regs->scause);
@@ -28,6 +30,9 @@ void do_trap(struct trap_frame *regs) {
         }
     } else {
         if (cause_code == ENV_CALL_FROM_UMODE) { // scause=8 means ecall from U-mode
+            /* ecall from U-mode */
+            // uart_puts("[trap] ecall  sepc=0x");
+            // uart_hex(regs->sepc);
             uart_puts("=== S-Mode Trap ===\n");
             uart_puts("scause=");
             uart_int(regs->scause);
