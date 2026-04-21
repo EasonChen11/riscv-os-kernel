@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "fdt.h"
 #include "bootinfo.h"
+#include "sbi.h"
 
 // ─────────────────────────────────────────────────────────────
 // Self-relocation policy
@@ -155,8 +156,14 @@ void bootloader_load_kernel(void) {
 
     uart_puts("Kernel loaded. Jumping to kernel...\n");
 
+    // ── 靜默所有中斷來源，避免舊狀態在新 kernel 早期 boot 時觸發 ──
+    // 新 kernel 的 trap_init / timer_init / plic_init / uart_irq_init 會各自重新打開需要的項目
+    *UART_IER = 0;                                             // 關 UART 本地中斷（ERBFI / ETBEI）
+    asm volatile("csrc sie, %0" :: "r"((1UL<<5) | (1UL<<9))); // 關 sie.STIE + sie.SEIE
+    asm volatile("csrci sstatus, 2");                          // 關 sstatus.SIE（全域）
+    sbi_set_timer(~0UL);                                       // 把 timer 推到極遠，不會在新 kernel 早期觸發
+
     // 清除 I-Cache，確保 CPU 取指令時讀到剛寫入的新 kernel
-    // asm volatile(".4byte 0x0000100f");
     asm volatile("fence.i");
 
     kernel_func_t kernel_entry = (kernel_func_t)KERNEL_ADDR; // kernel entry point is the start of the loaded image
