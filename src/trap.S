@@ -2,7 +2,7 @@
 add_trap:
     la t0, handle_exception
     csrw stvec, t0
-    ret
+    ret # == jr ra 返回原本位置
 
 .align 2  # 要求 trap handler 的位址必須 4-byte 對齊(2^2=4)
 handle_exception:
@@ -100,5 +100,5 @@ ret_from_exception:
     ld t4,  8 * 28(sp)
     ld t5,  8 * 29(sp)
     ld t6,  8 * 30(sp)
-    ld sp,  8 *  1(sp)   # 最後才還原 sp（user sp）
+    ld sp,  8 *  1(sp)   # 最後才還原 sp（user sp），因為 sp 一旦換回 User 的堆疊，你就再也拿不到存放在 Kernel Stack 裡的資料
     sret
