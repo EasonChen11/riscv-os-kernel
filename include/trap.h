@@ -4,8 +4,9 @@
 #include <stdint.h>
 #define SCAUSE_INTERRUPT_BIT (1UL << 63)
 #define SCAUSE_CODE_MASK (~(1UL << 63))
-#define ENV_CALL_FROM_UMODE 8
-#define INT_SUP_TIMER 5
+#define ENV_CALL_FROM_UMODE 8 // ecall from U-mode 的 scause code 是 8，來自 RISC-V privileged spec, 非 intrupt
+#define INT_SUP_TIMER 5 // Supervisor timer interrupt, from RISC-V privileged spec
+#define INT_SUP_EXT 9 // from PLIC
 
 /* kernel stack frame saved by handle_exception (35 * 8 = 280 bytes)
  * layout must match the sd/ld offsets in start.S handle_exception */

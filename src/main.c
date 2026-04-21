@@ -6,6 +6,7 @@
 #include "mem_reserve.h"
 #include "startup.h"
 #include "timer.h"
+#include "plic.h"
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
 
@@ -37,6 +38,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
 
     // timer
     timer_init();
+
+    // PLIC（先做 driver smoke test，還沒接 UART IRQ）
+    plic_init(fdt, hart_id);
 
     shell_init();
     while (1) {

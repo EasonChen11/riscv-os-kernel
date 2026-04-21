@@ -1,6 +1,7 @@
 #include "trap.h"
 #include "uart.h"
 #include "timer.h"
+#include "plic.h"
 
 /* Called from handle_exception (assembly) with the saved trap frame. */
 // file :file:///Users/eason/Downloads/riscv-spec.html#scause
@@ -11,6 +12,10 @@ void do_trap(struct trap_frame *regs) {
     if (is_interrupt) {
         if (cause_code == INT_SUP_TIMER) { // Supervisor timer interrupt
             handle_timer_interrupt();
+        } else if (cause_code == INT_SUP_EXT) { // Supervisor external interrupt
+            // Handle external interrupt
+            unsigned int irq = plic_claim();
+
         } else {
             uart_puts("Unknown interrupt: scause=");
             uart_int(regs->scause);
