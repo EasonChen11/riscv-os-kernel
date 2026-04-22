@@ -16,6 +16,7 @@ struct timer_event {
     void             *arg;           // callback 參數；setTimeout 會指回 event 自己
     char              msg[TIMER_MSG_LEN]; // setTimeout 訊息嵌在 event 裡，免另外 heap
     unsigned char     in_use;        // pool slot 狀態（0=free, 1=busy）
+    unsigned char     transferred;   // 1=cb 已把 event ownership 轉交下游 task，handle_timer_interrupt 不再 pool_free
 };
 
 void timer_init(void);

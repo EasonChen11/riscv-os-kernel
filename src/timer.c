@@ -4,6 +4,7 @@
 #include "fdt.h"
 #include "bootinfo.h"
 #include "dynalloc.h"
+#include "task.h"
 
 static unsigned long boot_time = 0;
 static unsigned long CPU_FREQ = 10000000;
@@ -31,6 +32,7 @@ static struct timer_event* pool_alloc(void) {
     for (unsigned long i = 0; i < pool_size; i++) {
         if (!pool[i].in_use) {
             pool[i].in_use = 1;
+            pool[i].transferred = 0;
             init_list_head(&pool[i].link);
             irq_restore(s);
             return &pool[i];
@@ -102,24 +104,34 @@ void add_timer(timer_callback_t cb, void* arg, int sec) {
     timer_queue_insert(e);
 }
 
-// setTimeout：把 msg 嵌在 event slot，到期時 callback 讀 event 自己輸出。
-// arg 指向 event 自己（self-reference），因此 handle_timer_interrupt 必須在 cb(arg)
-// 之後才 pool_free（見下方註解）。
-static void setTimeout_cb(void* arg) {
+// 執行在 bottom-half（task context, SIE=1），讀 event 自己做 print 後釋放 slot。
+// 由 setTimeout_cb 透過 add_task 排入。
+static void setTimeout_print_task(void* arg) {
     struct timer_event* e = (struct timer_event*)arg;
     unsigned long now;
     asm volatile("rdtime %0" : "=r"(now));
-    // 改用 ms 顯示：避免雙重 floor(sec) 造成 ±1 秒誤差看起來像 setTimeout 亂跑
     unsigned long tpms = CPU_FREQ / 1000;
     uart_puts("[setTimeout cmd=");
     uart_int((e->cmd_tick - boot_time) / tpms);
     uart_puts("ms fired=");
     uart_int((now - boot_time) / tpms);
     uart_puts("ms diff=");
-    uart_int((now - e->cmd_tick) / tpms);   // 直接算 tick 差再除，精度優於 fired-cmd
+    uart_int((now - e->cmd_tick) / tpms);
     uart_puts("ms] ");
     uart_puts(e->msg);
     uart_putc('\n');
+
+    // ownership 轉移的終點：task 完成後由此釋放 slot
+    pool_free(e);
+}
+
+// 跑在 timer ISR（SIE=0）。直接呼叫 uart_puts 會踩到
+// 「uart_putc ring 滿 → 等 UART ISR drain，但 SIE=0 不會 fire」的 deadlock。
+// 故把 print 延後到 bottom-half，event ownership 轉給 print task。
+static void setTimeout_cb(void* arg) {
+    struct timer_event* e = (struct timer_event*)arg;
+    add_task(setTimeout_print_task, e, PRIO_LOW);
+    e->transferred = 1;   // 告訴 handle_timer_interrupt 別 pool_free（由 print_task 負責）
 }
 
 void setTimeout(int sec, const char* msg) {
@@ -173,10 +185,12 @@ void handle_timer_interrupt(void) {
         void*            arg = head->arg;
         list_del(&head->link);
 
-        // cb 可能讀 arg 指向的 event（setTimeout 用 arg=&event 讀 msg/cmd_tick），
-        // 因此 pool_free 必須在 cb 返回後；在此之前 in_use 仍為 1，pool_alloc 不會搶走。
+        // cb 可能把 event ownership 轉給下游 task（setTimeout_cb 會設 transferred=1），
+        // 這種情況本函式不負責 pool_free，由下游 task 結束時 free。
+        // 非轉移的純 callback（add_timer 大多數情境）則照舊在此 free。
         cb(arg);
-        pool_free(head);
+        if (!head->transferred)
+            pool_free(head);
     }
     reprogram_hw();
 }
