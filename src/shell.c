@@ -8,6 +8,7 @@
 #include "dynalloc.h"
 #include "trap.h"
 #include "timer.h"
+#include "task.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -27,6 +28,22 @@ static void cmd_help(void) {
     uart_puts("  mmtest - run buddy allocator test.\n");
     uart_puts("  exec   - execute user program. usage: exec <filename>\n");
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
+    uart_puts("  taskdemo - enqueue tasks of different priorities and drain.\n");
+}
+
+// Adv2 task queue 驗證：丟三個不同 priority 的 task，預期輸出 HIGH → NORMAL → LOW。
+// c1 階段 drain 尚未接到 trap，直接手動呼叫 drain_tasks 觀察結果。
+static void taskdemo_cb(void* arg) {
+    uart_puts("[task] ");
+    uart_puts((const char*)arg);
+    uart_putc('\n');
+}
+
+static void cmd_taskdemo(void) {
+    add_task(taskdemo_cb, "LOW",    PRIO_LOW);
+    add_task(taskdemo_cb, "HIGH",   PRIO_HIGH);
+    add_task(taskdemo_cb, "NORMAL", PRIO_NORMAL);
+    drain_tasks();
 }
 
 // 對照 lab3.rst test_alloc_1：透過 dynalloc 統一 API 測試 buddy + chunk pool。
@@ -144,6 +161,8 @@ static void exec_cmd(const char* cmd) {
         exec_umode(cmd + 5);
     } else if (strncmp(cmd, "setTimeout ", 11) == 0) {
         cmd_setTimeout(cmd + 11);
+    } else if (strcmp(cmd, "taskdemo") == 0) {
+        cmd_taskdemo();
     } else {
         cmd_unknown(cmd);
     }

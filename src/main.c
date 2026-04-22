@@ -8,6 +8,7 @@
 #include "timer.h"
 #include "plic.h"
 #include "trap.h"
+#include "task.h"
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
 
@@ -43,6 +44,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 4: 交棒 buddy / dynalloc，它們會從 startup heap 動態拿 frame_array / page_descriptors
     buddy_init();
     dynalloc_init();
+
+    // task queue 基礎設施：timer_init 之前就緒，後續 setTimeout / UART 可丟 task
+    task_init();
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
