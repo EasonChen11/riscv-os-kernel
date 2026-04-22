@@ -156,9 +156,14 @@ void bootloader_load_kernel(void) {
 
     uart_puts("Kernel loaded. Jumping to kernel...\n");
 
+    // interrupt 模式下 uart_puts 只 enqueue 到 tx_ring；必須等 ISR 把 ring 搬空 + FIFO 送完
+    // 才能關中斷，否則剩下的 byte 會卡在 ring 裡永遠送不出去
+    while (*UART_IER & (1 << 1)) ;       // 等 ISR 在 ring 空時清掉 ETBEI
+    while (!(*UART_LSR & (1 << 6))) ;    // 等 TEMT：THR + shift reg 都空
+
     // ── 靜默所有中斷來源，避免舊狀態在新 kernel 早期 boot 時觸發 ──
     // 新 kernel 的 trap_init / timer_init / plic_init / uart_irq_init 會各自重新打開需要的項目
-    *UART_IER = 0;                                             // 關 UART 本地中斷（ERBFI / ETBEI）
+    *UART_IER &= ~0x03;                                        // 只清 ERBFI + ETBEI，保留 bit 6（DW UART SoC-specific，清掉會讓 TX 死）
     asm volatile("csrc sie, %0" :: "r"((1UL<<5) | (1UL<<9))); // 關 sie.STIE + sie.SEIE
     asm volatile("csrci sstatus, 2");                          // 關 sstatus.SIE（全域）
     sbi_set_timer(~0UL);                                       // 把 timer 推到極遠，不會在新 kernel 早期觸發
