@@ -11,12 +11,9 @@ typedef void (*timer_callback_t)(void*);
 struct timer_event {
     struct list_head  link;          // sorted queue 節點
     unsigned long     expire_tick;   // 到期的絕對 mtime
-    unsigned long     cmd_tick;      // add_timer 呼叫時的 mtime（setTimeout 輸出用）
-    timer_callback_t  callback;      // 到期動作
-    void             *arg;           // callback 參數；setTimeout 會指回 event 自己
-    char              msg[TIMER_MSG_LEN]; // setTimeout 訊息嵌在 event 裡，免另外 heap
+    timer_callback_t  callback;      // 到期時要延後到 task 的動作
+    void             *arg;           // callback 參數；語意由 caller 決定（setTimeout 指向獨立 ctx）
     unsigned char     in_use;        // pool slot 狀態（0=free, 1=busy）
-    unsigned char     transferred;   // 1=cb 已把 event ownership 轉交下游 task，handle_timer_interrupt 不再 pool_free
 };
 
 void timer_init(void);

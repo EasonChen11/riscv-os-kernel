@@ -6,6 +6,13 @@
 #include "dynalloc.h"
 #include "task.h"
 
+// setTimeout 的訊息 + 下命令時戳獨立 alloc，讓 timer_event 到期後可立刻 pool_free，
+// 下游 task 從 ctx 讀資料自行負責 dynalloc_free(ctx)。
+struct setTimeout_ctx {
+    unsigned long cmd_tick;
+    char          msg[TIMER_MSG_LEN];
+};
+
 static unsigned long boot_time = 0;
 static unsigned long CPU_FREQ = 10000000;
 
@@ -32,7 +39,6 @@ static struct timer_event* pool_alloc(void) {
     for (unsigned long i = 0; i < pool_size; i++) {
         if (!pool[i].in_use) {
             pool[i].in_use = 1;
-            pool[i].transferred = 0;
             init_list_head(&pool[i].link);
             irq_restore(s);
             return &pool[i];
@@ -82,7 +88,7 @@ static void timer_queue_insert(struct timer_event* e) {
     irq_restore(s);
 }
 
-// 註冊 one-shot timer：sec 秒後呼叫 cb(arg)。可在 ISR 或 thread 上下文呼叫。
+// 註冊 one-shot timer：sec 秒後排入 task queue 呼叫 cb(arg)。可在 ISR 或 thread 上下文呼叫。
 void add_timer(timer_callback_t cb, void* arg, int sec) {
     if (sec <= 0) {
         uart_puts("add_timer: invalid sec\n");
@@ -98,40 +104,27 @@ void add_timer(timer_callback_t cb, void* arg, int sec) {
     }
     e->callback    = cb;
     e->arg         = arg;
-    e->cmd_tick    = now;
     e->expire_tick = now + (unsigned long)sec * CPU_FREQ;
 
     timer_queue_insert(e);
 }
 
-// 執行在 bottom-half（task context, SIE=1），讀 event 自己做 print 後釋放 slot。
-// 由 setTimeout_cb 透過 add_task 排入。
-static void setTimeout_print_task(void* arg) {
-    struct timer_event* e = (struct timer_event*)arg;
+// 執行在 bottom-half（task context, SIE=1）。arg 指向 shell 替它 alloc 的 ctx。
+static void setTimeout_cb(void* arg) {
+    struct setTimeout_ctx* ctx = (struct setTimeout_ctx*)arg;
     unsigned long now;
     asm volatile("rdtime %0" : "=r"(now));
     unsigned long tpms = CPU_FREQ / 1000;
     uart_puts("[setTimeout cmd=");
-    uart_int((e->cmd_tick - boot_time) / tpms);
+    uart_int((ctx->cmd_tick - boot_time) / tpms);
     uart_puts("ms fired=");
     uart_int((now - boot_time) / tpms);
     uart_puts("ms diff=");
-    uart_int((now - e->cmd_tick) / tpms);
+    uart_int((now - ctx->cmd_tick) / tpms);
     uart_puts("ms] ");
-    uart_puts(e->msg);
+    uart_puts(ctx->msg);
     uart_putc('\n');
-
-    // ownership 轉移的終點：task 完成後由此釋放 slot
-    pool_free(e);
-}
-
-// 跑在 timer ISR（SIE=0）。直接呼叫 uart_puts 會踩到
-// 「uart_putc ring 滿 → 等 UART ISR drain，但 SIE=0 不會 fire」的 deadlock。
-// 故把 print 延後到 bottom-half，event ownership 轉給 print task。
-static void setTimeout_cb(void* arg) {
-    struct timer_event* e = (struct timer_event*)arg;
-    add_task(setTimeout_print_task, e, PRIO_LOW);
-    e->transferred = 1;   // 告訴 handle_timer_interrupt 別 pool_free（由 print_task 負責）
+    dynalloc_free(ctx);
 }
 
 void setTimeout(int sec, const char* msg) {
@@ -142,22 +135,17 @@ void setTimeout(int sec, const char* msg) {
     unsigned long now;
     asm volatile("rdtime %0" : "=r"(now));
 
-    struct timer_event* e = pool_alloc();
-    if (!e) {
-        uart_puts("setTimeout: pool full\n");
+    struct setTimeout_ctx* ctx = (struct setTimeout_ctx*)dynalloc_alloc(sizeof(struct setTimeout_ctx));
+    if (!ctx) {
+        uart_puts("setTimeout: alloc failed\n");
         return;
     }
-    e->callback    = setTimeout_cb;
-    e->arg         = e;                                       // callback 讀 event 自己
-    e->cmd_tick    = now;
-    e->expire_tick = now + (unsigned long)sec * CPU_FREQ;
-
-    // 複製 msg 到 event 內嵌 buffer，truncate 到 TIMER_MSG_LEN-1
+    ctx->cmd_tick = now;
     unsigned long i = 0;
-    for (; msg[i] && i < TIMER_MSG_LEN - 1; i++) e->msg[i] = msg[i];
-    e->msg[i] = '\0';
+    for (; msg[i] && i < TIMER_MSG_LEN - 1; i++) ctx->msg[i] = msg[i];
+    ctx->msg[i] = '\0';
 
-    timer_queue_insert(e);
+    add_timer(setTimeout_cb, ctx, sec);
 }
 
 // Heartbeat：每 2 秒印 boot time 並自我重排。
@@ -172,6 +160,7 @@ static void heartbeat_cb(void* arg) {
 }
 
 // 由 trap 在 scause=STI 時呼叫。硬體進 trap 已關 SIE，這裡不需再 irq_save。
+// 所有 callback 統一延後到 task context (SIE=1)，ISR 本身只做 pop + enqueue + free event。
 void handle_timer_interrupt(void) {
     unsigned long now;
     asm volatile("rdtime %0" : "=r"(now));
@@ -181,16 +170,10 @@ void handle_timer_interrupt(void) {
             list_entry(timer_queue.next, struct timer_event, link);
         if (head->expire_tick > now) break;
 
-        timer_callback_t cb  = head->callback;
-        void*            arg = head->arg;
         list_del(&head->link);
-
-        // cb 可能把 event ownership 轉給下游 task（setTimeout_cb 會設 transferred=1），
-        // 這種情況本函式不負責 pool_free，由下游 task 結束時 free。
-        // 非轉移的純 callback（add_timer 大多數情境）則照舊在此 free。
-        cb(arg);
-        if (!head->transferred)
-            pool_free(head);
+        if (head->callback)
+            add_task(head->callback, head->arg, PRIO_LOW);
+        pool_free(head);
     }
     reprogram_hw();
 }
