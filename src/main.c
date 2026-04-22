@@ -16,6 +16,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 0: 只解 DTB 與暫存器位址，此階段不可呼叫 uart_puts（interrupt 模式下 ring 尚無 drainer）
     uart_init(fdt);
     bootinfo_init(fdt, reloc_addr);
+    // task_init 必須先於 trap_init：do_trap 結尾會呼叫 drain_tasks，
+    // kernel 自我搬遷使 .data 靜態 self-pointing 失效，必須 runtime init_list_head。
+    task_init();
     trap_init();              // 開 sstatus.SIE
     plic_init(fdt, hart_id);  // 設 PLIC base / threshold / sie.SEIE
     uart_irq_init();          // 設 UART IER/MCR/FCR + PLIC enable；interrupt 路徑就緒
@@ -44,9 +47,6 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 4: 交棒 buddy / dynalloc，它們會從 startup heap 動態拿 frame_array / page_descriptors
     buddy_init();
     dynalloc_init();
-
-    // task queue 基礎設施：timer_init 之前就緒，後續 setTimeout / UART 可丟 task
-    task_init();
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();

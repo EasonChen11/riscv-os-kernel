@@ -16,6 +16,10 @@ static inline void irq_restore(unsigned long s) {
 static inline void sie_enable(void)  { asm volatile("csrs sstatus, %0" :: "r"(1UL << 1)); }
 static inline void sie_disable(void) { asm volatile("csrc sstatus, %0" :: "r"(1UL << 1)); }
 
+// BSS 零初值 — 必須由 task_init() 在開任何中斷前執行 init_list_head 設成自指循環。
+// 不能用靜態 self-referencing 初值（`{ &task_queue, &task_queue }`）：
+// start.S 做 kernel 自我搬遷（0x80200000 → 0x82000000）時只做 raw copy，
+// .data 裡的絕對位址仍指向舊的 linked 位置，搬遷後 self-pointing 變成 dangling pointer。
 static struct list_head task_queue;
 
 // 代表「目前正在 drain 哪個 priority 的 task」。
@@ -57,6 +61,9 @@ void add_task(task_callback_t cb, void* arg, int priority) {
     irq_restore(s);
 }
 
+// 由 do_trap 結尾呼叫（SIE=0 進來）。亦可在 thread context 直接呼叫（shell demo），
+// 進出只改本地 SIE 狀態，不影響呼叫者。
+// 遞迴層數 = 系統中活躍 task 的 priority 級數，stack 消耗有上限。
 // 由 do_trap 結尾呼叫（SIE=0 進來）。亦可在 thread context 直接呼叫（shell demo），
 // 進出只改本地 SIE 狀態，不影響呼叫者。
 // 遞迴層數 = 系統中活躍 task 的 priority 級數，stack 消耗有上限。
