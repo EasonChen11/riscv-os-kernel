@@ -39,7 +39,7 @@ void plic_init(const void *fdt, unsigned long hartid) {
     plic_ctx = 2 * (int)hartid + 1;  // hart_id S-mode context
 
     REG32(PLIC_THRESHOLD(plic_ctx)) = 0;  // threshold=0：所有 priority>0 的都接受
-    asm volatile("csrrs zero, sie, %0" :: "r"(1 << 9)); // sie.SEIE = bit 9，開 S-mode external interrupt`
+    asm volatile("csrrs zero, sie, %0" :: "r"(1 << 9)); // sie.SEIE
     
     // uart_puts("[plic] base=");
     // uart_hex(plic_base);

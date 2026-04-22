@@ -34,6 +34,7 @@ enum UART_REG {
 
 // 初始化 / 輸出（兩種模式共用）
 void uart_init(const void* fdt);
+void uart_init_print_info(void);   // interrupt 模式下須延後到 uart_irq_init 之後才能呼叫
 void uart_putc(char c);
 void uart_puts(const char* s);
 void uart_hex(unsigned long h);

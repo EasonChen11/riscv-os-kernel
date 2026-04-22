@@ -12,8 +12,15 @@
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
 
 void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_addr) {
+    // Phase 0: 只解 DTB 與暫存器位址，此階段不可呼叫 uart_puts（interrupt 模式下 ring 尚無 drainer）
     uart_init(fdt);
     bootinfo_init(fdt, reloc_addr);
+    trap_init();              // 開 sstatus.SIE
+    plic_init(fdt, hart_id);  // 設 PLIC base / threshold / sie.SEIE
+    uart_irq_init();          // 設 UART IER/MCR/FCR + PLIC enable；interrupt 路徑就緒
+
+    // 從這裡開始 uart_puts 可用（interrupt 模式下由 UART ISR drain TX ring）
+    uart_init_print_info();
 
     // Phase 1: 登記所有 reserved 區段。memory_reserve 只把區間 push 到靜態陣列，不依賴任何 allocator
     // OpenSBI 的區段不能硬編碼，若板子 /reserved-memory 有列就由 memory_reserve_fdt_reserved_mem 處理；
@@ -37,17 +44,8 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     buddy_init();
     dynalloc_init();
 
-    // trap 子系統總開關：開 sstatus.SIE，各 driver 再自行開對應 sie.X
-    trap_init();
-
-    // timer
+    // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
-
-    // PLIC
-    plic_init(fdt, hart_id);
-
-    // UART：polling 模式為 no-op；interrupt 模式下開 IER/MCR/FCR 並在 PLIC 啟用 UART IRQ
-    uart_irq_init();
 
     shell_init();
     while (1) {

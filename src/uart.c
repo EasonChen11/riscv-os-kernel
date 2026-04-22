@@ -10,9 +10,9 @@ static unsigned int uart_irq_num = 0;   // UART 對 PLIC 的 IRQ 號（由 uart_
 
 void uart_init(const void* fdt) {
     // QEMU: /soc/uart, OrangePi RV2: /soc/serial
-    int offset = fdt_path_offset(fdt, "/soc/uart");
+    int offset = fdt_path_offset(fdt, "/soc/serial");
     if (offset < 0) {
-        offset = fdt_path_offset(fdt, "/soc/serial");
+        offset = fdt_path_offset(fdt, "/soc/uart");
     }
 
     int soc = fdt_path_offset(fdt, "/soc");
@@ -39,6 +39,17 @@ void uart_init(const void* fdt) {
     if (irq_prop) {
         uart_irq_num = fdt_read_cells((const uint32_t*)irq_prop, 1);
     }
+}
+
+// 在 uart_irq_init 之後呼叫，否則 interrupt 路徑的 TX ring 沒人 drain
+void uart_init_print_info(void) {
+    uart_puts("uart_init: base=0x");
+    uart_hex(uart_base);
+    uart_puts(" shift=");
+    uart_int(uart_shift);
+    uart_puts(" irq=");
+    uart_int(uart_irq_num);
+    uart_putc('\n');
 }
 
 // uart_putc 在 #if 分支裡個別實作（polling / interrupt 行為不同）
@@ -164,10 +175,11 @@ static inline void irq_restore(unsigned long s) {
 }
 
 void uart_irq_init(void) {
-    *UART_IER = (1 << 0);                      // bit0 ERBFI：只開 RX；TX 的 ETBEI 留給 uart_putc 動態開
-    *UART_MCR |= (1 << 3);                     // bit3 OUT2：把 IRQ 接出到 PLIC（QEMU virt 必要）
-    *UART_FCR = (1 << 0) | (1 << 1) | (1 << 2);// bit0 FIFO enable + bit1 clr RX + bit2 clr TX
-    plic_enable_irq(uart_irq_num, 1);
+    *UART_LCR &= ~(1 << 7);                    // DLAB=0，確保 IER 訪問 IER 而非 DLH
+    *UART_FCR = (1 << 0) | (1 << 1) | (1 << 2);// FIFO enable + clr RX + clr TX
+    *UART_MCR |= (1 << 3);                     // OUT2：IRQ 接 PLIC
+    plic_enable_irq(uart_irq_num, 1);          // PLIC 端 enable
+    *UART_IER |= (1 << 0);                     // ERBFI；|= 保留 u-boot 留下的 bit（OrangePi RV2 DW UART 的 bit 6 不可清）
 }
 
 // 由 trap 的 INT_SUP_EXT 分支呼叫。一次 IRQ 可能同時帶 RX 和 TX 事件，都要處理
