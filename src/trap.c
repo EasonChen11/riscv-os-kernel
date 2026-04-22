@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "timer.h"
 #include "plic.h"
+#include "task.h"
 
 // sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
 void trap_init(void) {
@@ -50,4 +51,9 @@ void do_trap(struct trap_frame *regs) {
             uart_putc('\n');
         }
     }
+
+    // Bottom-half：top-half ISR 透過 add_task 延後的工作在這裡以 SIE=1 執行。
+    // nested IRQ 進來會再走一次 do_trap → drain_tasks，自然形成 preemption
+    // 與 nested interrupt。trap.S 已存 sstatus/sepc，nested 下兩份 frame 不互相覆寫。
+    drain_tasks();
 }

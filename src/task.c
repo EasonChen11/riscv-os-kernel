@@ -78,47 +78,39 @@ void add_task(task_callback_t cb, void* arg, int priority) {
     queue_insert(t);
 }
 
-// 由 do_trap 結尾呼叫（SIE=0 進來）。
+// 由 do_trap 結尾呼叫（SIE=0 進來）。亦可在 thread context 直接呼叫（shell taskdemo），
+// 進出只改本地 SIE 狀態，不影響呼叫者。
 // 遞迴層數 = 系統中活躍 task 的 priority 級數，stack 消耗有上限。
 void drain_tasks(void) {
-    while (1) {
-        unsigned long s = irq_save();
+    // 存下呼叫者的 SIE，結束時 restore。drain loop 內部嚴格控制 SIE：
+    //  - queue / running_prio 的 RMW 在 SIE=0 下做
+    //  - callback 在 SIE=1 下跑以允許 nested IRQ → preemption
+    unsigned long caller_state = irq_save();
 
-        if (list_empty(&task_queue)) {
-            irq_restore(s);
-            return;
-        }
+    while (1) {
+        if (list_empty(&task_queue)) break;
         struct task* head = list_entry(task_queue.next, struct task, link);
 
         // 只跑嚴格比當前 running_prio 大的 task；
         // 同 prio 排隊等外層 drain 完成（避免 starvation 與無限遞迴）。
-        if (head->priority <= running_prio) {
-            irq_restore(s);
-            return;
-        }
+        if (head->priority <= running_prio) break;
 
         list_del(&head->link);
-        int saved = running_prio;
-        running_prio = head->priority;
+        int saved_prio = running_prio;
+        running_prio = head->priority;      // nested drain 進來會看到這個新基準
 
         task_callback_t cb = head->callback;
         void* arg = head->arg;
 
-        irq_restore(s);
-
-        // 在 SIE=1 下跑 callback：
-        //  - 新 IRQ 可進，進 trap 後 drain_tasks 會再被呼叫；
-        //  - 新 IRQ 加進 queue 的 task 若 priority > running_prio（當前 head->priority），
-        //    nested drain 會立即 pop 並執行，形成 preemption。
-        sie_enable();
+        sie_enable();                       // SIE=1：允許 nested IRQ
         cb(arg);
-        sie_disable();
+        sie_disable();                      // SIE=0：保護後續 RMW
 
-        s = irq_save();
-        running_prio = saved;
+        running_prio = saved_prio;          // 先 restore running_prio，再 free
         pool_free(head);
-        irq_restore(s);
     }
+
+    irq_restore(caller_state);
 }
 
 void task_init(void) {
