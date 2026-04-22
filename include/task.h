@@ -3,10 +3,9 @@
 
 #include "list.h"
 
-#define TASK_MAX          32
 #define PRIO_IDLE         0     // drain loop 最外層的比較基準；user task 不用
 #define PRIO_LOW          1     // setTimeout print、demo low task
-#define PRIO_NORMAL       5     // UART RX cook
+#define PRIO_NORMAL       5     // UART RX cook（若用到）
 #define PRIO_HIGH         9     // 保留給 critical driver / demo high task
 
 typedef void (*task_callback_t)(void*);
@@ -16,7 +15,6 @@ struct task {
     task_callback_t   callback;
     void             *arg;
     int               priority;
-    unsigned char     in_use;       // pool slot 狀態
 };
 
 void task_init(void);
