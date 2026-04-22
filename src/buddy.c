@@ -213,7 +213,7 @@ void *buddy_alloc_pages(int order) {
     unsigned long index = frame_to_idx(target_frame);
     unsigned long addr = buddy_page_idx_to_addr(index);
     // log_alloc(addr, order, index); // Log the allocation of the page
-    dump_counts(); // Debug: dump free block counts
+    // dump_counts();  // debug 用，lab4 Adv2 起 task pool 每 heartbeat 都會動 buddy，噪音太大
     return (void *)(addr);
 }
 
@@ -251,5 +251,5 @@ void buddy_free_pages(void *addr) {
     // log_free(block_addr, order, index); // Log the freeing of the page
 
     freelist_add(idx_to_frame(index), order);
-    dump_counts(); // Debug: dump free block counts
+    // dump_counts();  // 同上：heartbeat 觸發的 task slot free 會撞到，留給 mmtest 手動呼叫用
 }
