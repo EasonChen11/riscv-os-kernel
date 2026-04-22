@@ -146,6 +146,12 @@ void setTimeout(int sec, const char* msg) {
     ctx->msg[i] = '\0';
 
     add_timer(setTimeout_cb, ctx, sec);
+
+    uart_puts("setTimeout: scheduled ");
+    uart_int(sec);
+    uart_puts("s -> \"");
+    uart_puts(ctx->msg);
+    uart_puts("\"\n");
 }
 
 // Heartbeat：每 2 秒印 boot time 並自我重排。
