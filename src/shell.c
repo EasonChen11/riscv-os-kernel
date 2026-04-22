@@ -7,6 +7,7 @@
 #include "buddy.h"
 #include "dynalloc.h"
 #include "trap.h"
+#include "timer.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -25,6 +26,7 @@ static void cmd_help(void) {
     uart_puts("  load  - load kernel image via UART.\n");
     uart_puts("  mmtest - run buddy allocator test.\n");
     uart_puts("  exec   - execute user program. usage: exec <filename>\n");
+    uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
 }
 
 // 對照 lab3.rst test_alloc_1：透過 dynalloc 統一 API 測試 buddy + chunk pool。
@@ -93,6 +95,30 @@ static void cmd_load(void) {
     bootloader_load_kernel();
 }
 
+// 解析 "setTimeout SEC MESSAGE"，MESSAGE 允許含空白。
+static void cmd_setTimeout(const char* args) {
+    while (*args == ' ') args++;
+    if (*args < '0' || *args > '9') {
+        uart_puts("usage: setTimeout <sec> <message>\n");
+        return;
+    }
+    int sec = 0;
+    while (*args >= '0' && *args <= '9') {
+        sec = sec * 10 + (*args - '0');
+        args++;
+    }
+    if (*args != ' ') {
+        uart_puts("usage: setTimeout <sec> <message>\n");
+        return;
+    }
+    while (*args == ' ') args++;
+    if (*args == '\0') {
+        uart_puts("setTimeout: empty message\n");
+        return;
+    }
+    setTimeout(sec, args);
+}
+
 static void cmd_unknown(const char* cmd) {
     uart_puts("Unknown command : ");
     uart_puts(cmd);
@@ -116,6 +142,8 @@ static void exec_cmd(const char* cmd) {
         cmd_mmtest();
     } else if (strncmp(cmd, "exec ", 5) == 0) {
         exec_umode(cmd + 5);
+    } else if (strncmp(cmd, "setTimeout ", 11) == 0) {
+        cmd_setTimeout(cmd + 11);
     } else {
         cmd_unknown(cmd);
     }

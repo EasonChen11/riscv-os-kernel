@@ -3,29 +3,196 @@
 #include "uart.h"
 #include "fdt.h"
 #include "bootinfo.h"
+#include "dynalloc.h"
 
 static unsigned long boot_time = 0;
-static unsigned long CPU_FREQ = 10000000; // 10 MHz
+static unsigned long CPU_FREQ = 10000000;
 
-static void log_timer(unsigned long now_ms) {
-    uart_puts("boot time: ");
-    uart_int((now_ms - boot_time) / CPU_FREQ);
+// ─── IRQ save/restore：保護 pool / queue / sbi_set_timer 的 RMW ─────────
+static inline unsigned long irq_save(void) {
+    unsigned long s;
+    // csrrc = CSR Read and Clear, 讀 sstatus 到 s，並把 SIE（bit 1）清零關中斷；s 的 bit 1 是原本的 SIE 狀態。
+    asm volatile("csrrc %0, sstatus, %1" : "=r"(s) : "i"(1 << 1));
+    return s;
+}
+
+// 回復原來 sstatus bit 1(SIE)
+static inline void irq_restore(unsigned long s) {
+    asm volatile("csrs sstatus, %0" :: "r"(s & (1 << 1)));
+}
+
+// ─── 動態 pool（size 由 timer_init 決定，storage 從 dynalloc 取） ──────
+static struct timer_event *pool;
+static unsigned long       pool_size;
+
+// 從靜態池取一個空閒 slot；池滿回 NULL。ISR 與 thread 都會呼叫，必須 irq_save。
+static struct timer_event* pool_alloc(void) {
+    unsigned long s = irq_save();
+    for (unsigned long i = 0; i < pool_size; i++) {
+        if (!pool[i].in_use) {
+            pool[i].in_use = 1;
+            init_list_head(&pool[i].link);
+            irq_restore(s);
+            return &pool[i];
+        }
+    }
+    irq_restore(s);
+    return (void*)0;
+}
+
+// 釋放 slot：呼叫端應先 list_del 拆下 queue。
+static void pool_free(struct timer_event* e) {
+    unsigned long s = irq_save();
+    e->in_use = 0;
+    irq_restore(s);
+}
+
+// ─── Timer queue（sorted by expire_tick，遞增） ─────────────────────────
+static struct list_head timer_queue;
+
+// 把硬體 timer 對準 queue head。queue 空就推到極遠避免誤觸發。
+// 呼叫端需已持有 SIE=0（irq_save 中）。
+static inline void reprogram_hw(void) {
+    if (list_empty(&timer_queue)) {
+        sbi_set_timer(~0UL);
+    } else {
+        struct timer_event* head =
+            list_entry(timer_queue.next, struct timer_event, link);
+        sbi_set_timer(head->expire_tick);
+    }
+}
+
+// ─── Public API ─────────────────────────────────────────────────────────
+
+// 把已填好欄位的 event 按 expire_tick 插進 queue 並重排硬體 timer。
+static void timer_queue_insert(struct timer_event* e) {
+    unsigned long s = irq_save();
+    // 走 queue 找第一個 expire_tick 比新 event 大的節點；若整圈沒找到，cur 會停在 &timer_queue。
+    struct list_head* cur;
+    for (cur = timer_queue.next; cur != &timer_queue; cur = cur->next) {
+        struct timer_event* ev = list_entry(cur, struct timer_event, link);
+        if (ev->expire_tick > e->expire_tick) break;
+    }
+    // list_add(new, prev) 把 new 插到 prev 之後；cur->prev 即「比我小的最後一個」。
+    // queue 空時 cur==&timer_queue、cur->prev==&timer_queue，照樣正確。
+    list_add(&e->link, cur->prev);
+    reprogram_hw();
+    irq_restore(s);
+}
+
+// 註冊 one-shot timer：sec 秒後呼叫 cb(arg)。可在 ISR 或 thread 上下文呼叫。
+void add_timer(timer_callback_t cb, void* arg, int sec) {
+    if (sec <= 0) {
+        uart_puts("add_timer: invalid sec\n");
+        return;
+    }
+    unsigned long now;
+    asm volatile("rdtime %0" : "=r"(now));
+
+    struct timer_event* e = pool_alloc();
+    if (!e) {
+        uart_puts("add_timer: pool full\n");
+        return;
+    }
+    e->callback    = cb;
+    e->arg         = arg;
+    e->cmd_tick    = now;
+    e->expire_tick = now + (unsigned long)sec * CPU_FREQ;
+
+    timer_queue_insert(e);
+}
+
+// setTimeout：把 msg 嵌在 event slot，到期時 callback 讀 event 自己輸出。
+// arg 指向 event 自己（self-reference），因此 handle_timer_interrupt 必須在 cb(arg)
+// 之後才 pool_free（見下方註解）。
+static void setTimeout_cb(void* arg) {
+    struct timer_event* e = (struct timer_event*)arg;
+    unsigned long now;
+    asm volatile("rdtime %0" : "=r"(now));
+    // 改用 ms 顯示：避免雙重 floor(sec) 造成 ±1 秒誤差看起來像 setTimeout 亂跑
+    unsigned long tpms = CPU_FREQ / 1000;
+    uart_puts("[setTimeout cmd=");
+    uart_int((e->cmd_tick - boot_time) / tpms);
+    uart_puts("ms fired=");
+    uart_int((now - boot_time) / tpms);
+    uart_puts("ms diff=");
+    uart_int((now - e->cmd_tick) / tpms);   // 直接算 tick 差再除，精度優於 fired-cmd
+    uart_puts("ms] ");
+    uart_puts(e->msg);
     uart_putc('\n');
 }
 
-void timer_init() {
-    CPU_FREQ = fdt_get_cpu_freq(g_fdt_base); // 從 FDT /cpus timebase-frequency 讀，不可硬編碼
-    unsigned long now_ms = 0;
-    asm volatile("rdtime %0" : "=r"(now_ms)); // rdtime 讀 mtime shadow（tick，非毫秒）
-    boot_time = now_ms;
-    sbi_set_timer(now_ms + 2*CPU_FREQ); // 傳絕對 mtime 值，2 秒後第一次觸發
-    asm volatile("csrrs zero, sie, %0" :: "r"(1 << 5));      // sie.STIE = bit 5，開 timer 中斷線（全域 sstatus.SIE 由 trap_init 負責）
-    log_timer(now_ms);
+void setTimeout(int sec, const char* msg) {
+    if (sec <= 0 || sec > 10000) {
+        uart_puts("setTimeout: sec must be 1..10000\n");
+        return;
+    }
+    unsigned long now;
+    asm volatile("rdtime %0" : "=r"(now));
+
+    struct timer_event* e = pool_alloc();
+    if (!e) {
+        uart_puts("setTimeout: pool full\n");
+        return;
+    }
+    e->callback    = setTimeout_cb;
+    e->arg         = e;                                       // callback 讀 event 自己
+    e->cmd_tick    = now;
+    e->expire_tick = now + (unsigned long)sec * CPU_FREQ;
+
+    // 複製 msg 到 event 內嵌 buffer，truncate 到 TIMER_MSG_LEN-1
+    unsigned long i = 0;
+    for (; msg[i] && i < TIMER_MSG_LEN - 1; i++) e->msg[i] = msg[i];
+    e->msg[i] = '\0';
+
+    timer_queue_insert(e);
 }
 
-void handle_timer_interrupt() {
-    unsigned long now_ms = 0;
-    asm volatile("rdtime %0" : "=r"(now_ms));
-    log_timer(now_ms);
-    sbi_set_timer(now_ms + 2*CPU_FREQ); // set next timer interrupt for 2 seconds later
+// Heartbeat：每 2 秒印 boot time 並自我重排。
+static void heartbeat_cb(void* arg) {
+    (void)arg;
+    unsigned long now;
+    asm volatile("rdtime %0" : "=r"(now));
+    uart_puts("boot time: ");
+    uart_int((now - boot_time) / CPU_FREQ);
+    uart_putc('\n');
+    add_timer(heartbeat_cb, 0, 2);   // 在 ISR 內 add_timer 安全（SIE=0）
+}
+
+// 由 trap 在 scause=STI 時呼叫。硬體進 trap 已關 SIE，這裡不需再 irq_save。
+void handle_timer_interrupt(void) {
+    unsigned long now;
+    asm volatile("rdtime %0" : "=r"(now));
+
+    while (!list_empty(&timer_queue)) {
+        struct timer_event* head =
+            list_entry(timer_queue.next, struct timer_event, link);
+        if (head->expire_tick > now) break;
+
+        timer_callback_t cb  = head->callback;
+        void*            arg = head->arg;
+        list_del(&head->link);
+
+        // cb 可能讀 arg 指向的 event（setTimeout 用 arg=&event 讀 msg/cmd_tick），
+        // 因此 pool_free 必須在 cb 返回後；在此之前 in_use 仍為 1，pool_alloc 不會搶走。
+        cb(arg);
+        pool_free(head);
+    }
+    reprogram_hw();
+}
+
+void timer_init(void) {
+    CPU_FREQ = fdt_get_cpu_freq(g_fdt_base);
+    asm volatile("rdtime %0" : "=r"(boot_time));
+
+    init_list_head(&timer_queue);
+
+    pool_size = TIMER_MAX_EVENTS;
+    pool = (struct timer_event*)dynalloc_alloc(
+        sizeof(struct timer_event) * pool_size);
+    for (unsigned long i = 0; i < pool_size; i++)
+        pool[i].in_use = 0;
+
+    asm volatile("csrrs zero, sie, %0" :: "r"(1UL << 5));   // sie.STIE 開啟
+    add_timer(heartbeat_cb, 0, 2);                          // 啟動第一次 heartbeat
 }
