@@ -130,7 +130,7 @@ static volatile unsigned char rx_buf[RX_BUF_SZ];
 static volatile unsigned int  rx_head;   // ISR 寫入點
 static volatile unsigned int  rx_tail;   // shell 讀取點
 
-#define TX_BUF_SZ 128
+#define TX_BUF_SZ 4096
 static volatile unsigned char tx_buf[TX_BUF_SZ];
 static volatile unsigned int  tx_head;   // uart_putc 寫入點
 static volatile unsigned int  tx_tail;   // ISR 讀取點
