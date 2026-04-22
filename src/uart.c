@@ -207,13 +207,16 @@ void uart_putc(char c) {
     if (c == '\n')
         uart_putc('\r');
 
-    // ring 滿則 spin 等 ISR 消費；中斷保持開著讓 ISR 能 drain
+    // 進 spin 不需要再開 ETBEI：
+    //   - 只有前一次 uart_putc 成功 enqueue 過後，ring 才會非空；而那次結尾有 |= ETBEI
+    //   - ISR 僅在 tx_is_empty() 時才清 ETBEI
+    // 故 ring 非空 ⇒ ETBEI=1 的 invariant 由 producer 與 consumer 合作維持，ISR 一定會來 drain
     while (tx_is_full())
         ;
 
     unsigned long saved = irq_save();      // 保護 tx_head 與 IER 不被 ISR 搶
     tx_put((unsigned char)c);
-    *UART_IER |= (1 << 1);                     // 啟 ETBEI：THR empty 時 ISR 會來搬
+    *UART_IER |= (1 << 1);                 // producer 職責：加料後確保 ETBEI=1，讓 ISR 來搬
     irq_restore(saved);
 }
 
