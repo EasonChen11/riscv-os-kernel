@@ -29,6 +29,7 @@ static void cmd_help(void) {
     uart_puts("  exec   - execute user program. usage: exec <filename>\n");
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
     uart_puts("  taskdemo - enqueue tasks of different priorities and drain.\n");
+    uart_puts("  preemptdemo - demo preemption: low task is interrupted by high task.\n");
 }
 
 // Adv2 task queue 驗證：丟三個不同 priority 的 task，預期輸出 HIGH → NORMAL → LOW。
@@ -43,6 +44,27 @@ static void cmd_taskdemo(void) {
     add_task(taskdemo_cb, "LOW",    PRIO_LOW);
     add_task(taskdemo_cb, "HIGH",   PRIO_HIGH);
     add_task(taskdemo_cb, "NORMAL", PRIO_NORMAL);
+    drain_tasks();
+}
+
+// Adv2 preemption 驗證：LOW task 執行中丟出 HIGH task 並觸發 drain，
+// 預期 HIGH 搶先跑完才回 LOW。drain_tasks 可重入，語意等價於
+// 「LOW 執行期間 nested IRQ 進來觸發 drain」的真實 preemption 路徑。
+static void preempt_high_cb(void* arg) {
+    (void)arg;
+    uart_puts("  [HIGH runs to completion]\n");
+}
+
+static void preempt_low_cb(void* arg) {
+    (void)arg;
+    uart_puts("[LOW start]\n");
+    add_task(preempt_high_cb, 0, PRIO_HIGH);
+    drain_tasks();                     // 重入 drain：running_prio=LOW，pop HIGH>LOW → preempt
+    uart_puts("[LOW end]\n");
+}
+
+static void cmd_preemptdemo(void) {
+    add_task(preempt_low_cb, 0, PRIO_LOW);
     drain_tasks();
 }
 
@@ -163,6 +185,8 @@ static void exec_cmd(const char* cmd) {
         cmd_setTimeout(cmd + 11);
     } else if (strcmp(cmd, "taskdemo") == 0) {
         cmd_taskdemo();
+    } else if (strcmp(cmd, "preemptdemo") == 0) {
+        cmd_preemptdemo();
     } else {
         cmd_unknown(cmd);
     }
