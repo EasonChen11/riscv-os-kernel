@@ -5,6 +5,7 @@
 #include "bootinfo.h"
 #include "dynalloc.h"
 #include "task.h"
+#include "irq.h"
 
 // setTimeout 的訊息 + 下命令時戳獨立 alloc，讓 timer_event 到期後可立刻 pool_free，
 // 下游 task 從 ctx 讀資料自行負責 dynalloc_free(ctx)。
@@ -15,19 +16,6 @@ struct setTimeout_ctx {
 
 static unsigned long boot_time = 0;
 static unsigned long CPU_FREQ = 10000000;
-
-// ─── IRQ save/restore：保護 pool / queue / sbi_set_timer 的 RMW ─────────
-static inline unsigned long irq_save(void) {
-    unsigned long s;
-    // csrrc = CSR Read and Clear, 讀 sstatus 到 s，並把 SIE（bit 1）清零關中斷；s 的 bit 1 是原本的 SIE 狀態。
-    asm volatile("csrrc %0, sstatus, %1" : "=r"(s) : "i"(1 << 1));
-    return s;
-}
-
-// 回復原來 sstatus bit 1(SIE)
-static inline void irq_restore(unsigned long s) {
-    asm volatile("csrs sstatus, %0" :: "r"(s & (1 << 1)));
-}
 
 // ─── 動態 pool（size 由 timer_init 決定，storage 從 dynalloc 取） ──────
 static struct timer_event *pool;
@@ -197,5 +185,6 @@ void timer_init(void) {
         pool[i].in_use = 0;
 
     asm volatile("csrrs zero, sie, %0" :: "r"(1UL << 5));   // sie.STIE 開啟
-    add_timer(heartbeat_cb, 0, 2);                          // 啟動第一次 heartbeat
+    add_task(heartbeat_cb, 0, PRIO_LOW);   // 用標準排程進入 queue                                                         
+    drain_tasks();                          // 立刻吐（init 是 thread context，drain 可重入）
 }

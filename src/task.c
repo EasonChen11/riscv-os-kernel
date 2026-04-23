@@ -1,20 +1,7 @@
 #include "task.h"
 #include "uart.h"
 #include "dynalloc.h"
-
-// ─── IRQ save/restore：保護 queue / running_prio 與 dynalloc 呼叫 ────────
-static inline unsigned long irq_save(void) {
-    unsigned long s;
-    asm volatile("csrrc %0, sstatus, %1" : "=r"(s) : "i"(1 << 1));
-    return s;
-}
-static inline void irq_restore(unsigned long s) {
-    asm volatile("csrs sstatus, %0" :: "r"(s & (1 << 1)));
-}
-
-// 手動開 / 關 SIE：drain 跑 callback 時需要 SIE=1 以接受 nested IRQ
-static inline void sie_enable(void)  { asm volatile("csrs sstatus, %0" :: "r"(1UL << 1)); }
-static inline void sie_disable(void) { asm volatile("csrc sstatus, %0" :: "r"(1UL << 1)); }
+#include "irq.h"
 
 // BSS 零初值 — 必須由 task_init() 在開任何中斷前執行 init_list_head 設成自指循環。
 // 不能用靜態 self-referencing 初值（`{ &task_queue, &task_queue }`）：
@@ -61,9 +48,6 @@ void add_task(task_callback_t cb, void* arg, int priority) {
     irq_restore(s);
 }
 
-// 由 do_trap 結尾呼叫（SIE=0 進來）。亦可在 thread context 直接呼叫（shell demo），
-// 進出只改本地 SIE 狀態，不影響呼叫者。
-// 遞迴層數 = 系統中活躍 task 的 priority 級數，stack 消耗有上限。
 // 由 do_trap 結尾呼叫（SIE=0 進來）。亦可在 thread context 直接呼叫（shell demo），
 // 進出只改本地 SIE 狀態，不影響呼叫者。
 // 遞迴層數 = 系統中活躍 task 的 priority 級數，stack 消耗有上限。

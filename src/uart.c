@@ -2,6 +2,7 @@
 #include "fdt.h"
 #include "string.h"
 #include "plic.h"
+#include "irq.h"
 
 unsigned long uart_base  = 0x0L;   // DTB 解析前為 0；解析後填入
 unsigned long uart_shift = 0x0L;   // 0 for 16550A(QEMU), 2 for DW UART (4-byte stride)
@@ -162,16 +163,6 @@ static inline bool tx_get(unsigned char *c) {
     *c = tx_buf[tx_tail];
     tx_tail = (tx_tail + 1) % TX_BUF_SZ;
     return true;
-}
-
-// 關 / 還原 sstatus.SIE（保護 IER 與 tx_head 不被 ISR 搶）
-static inline unsigned long irq_save(void) {
-    unsigned long s;
-    asm volatile("csrrc %0, sstatus, %1" : "=r"(s) : "i"(1 << 1)); // clear sstatus.SIE，關閉全域中斷
-    return s;
-}
-static inline void irq_restore(unsigned long s) {
-    asm volatile("csrs sstatus, %0" :: "r"(s & (1 << 1)));
 }
 
 void uart_irq_init(void) {
