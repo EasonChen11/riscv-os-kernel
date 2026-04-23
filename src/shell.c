@@ -20,17 +20,17 @@ void shell_init(void) {
 // ─── shell command handlers ────────────────────────────────────
 static void cmd_help(void) {
     uart_puts("Available commands:\n");
-    uart_puts("  help  - show all commands.\n");
-    uart_puts("  hello - print Hello, World.\n");
-    uart_puts("  info  - print system info.\n");
-    uart_puts("  ls    - list initrd files.\n");
-    uart_puts("  cat   - print file content. usage: cat <filename>\n");
-    uart_puts("  load  - load kernel image via UART.\n");
-    uart_puts("  mmtest - run buddy allocator test.\n");
-    uart_puts("  exec   - execute user program. usage: exec <filename>\n");
+    uart_puts("  help       - show all commands.\n");
+    uart_puts("  hello      - print Hello, World.\n");
+    uart_puts("  info       - print system info.\n");
+    uart_puts("  ls         - list initrd files.\n");
+    uart_puts("  cat        - print file content. usage: cat <filename>\n");
+    uart_puts("  load       - load kernel image via UART.\n");
+    uart_puts("  mmtest     - run buddy allocator test.\n");
+    uart_puts("  exec       - execute user program. usage: exec <filename>\n");
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
     uart_puts("  heartbeat  - toggle heartbeat output (boot time print) on/off.\n");
-    uart_puts("  demo  - run lab4_demo() (paste Adv2 test code in src/shell.c).\n");
+    uart_puts("  demo       - run lab4_demo() (paste Adv2 test code in src/shell.c).\n");
 }
 
 // demo helper：基本 cb，只印 enter/exit。
