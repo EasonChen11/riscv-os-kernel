@@ -166,11 +166,11 @@ static inline bool tx_get(unsigned char *c) {
 }
 
 void uart_irq_init(void) {
-    *UART_LCR &= ~(1 << 7);                    // DLAB=0，確保 IER 訪問 IER 而非 DLH
-    *UART_FCR = (1 << 0) | (1 << 1) | (1 << 2);// FIFO enable + clr RX + clr TX
-    *UART_MCR |= (1 << 3);                     // OUT2：IRQ 接 PLIC
+    *UART_LCR &= ~LCR_DLAB;                    // DLAB=0，確保 IER 訪問 IER 而非 DLH
+    *UART_FCR = FCR_TRFIFOE | FCR_RESETRF | FCR_RESETTF | FCR_ITL_1BYTE; // FIFO enable + reset RX/TX + RX trigger 1 byte（shell 互動最即時）
+    *UART_MCR |= MCR_OUT2;                     // OUT2：IRQ 接 PLIC
     plic_enable_irq(uart_irq_num, 1);          // PLIC 端 enable
-    *UART_IER |= (1 << 0);                     // ERBFI；|= 保留 u-boot 留下的 bit（OrangePi RV2 DW UART 的 bit 6 不可清）
+    *UART_IER |= IER_RAVIE;                     // 啟用 RBR 有資料 IRQ；用 |= 保留 u-boot 留下的 bit 6 IER_UUE（K1 不可清，清了 TX 死）
 }
 
 // 由 trap 的 INT_SUP_EXT 分支呼叫。一次 IRQ 可能同時帶 RX 和 TX 事件，都要處理
@@ -190,7 +190,7 @@ void uart_handle_irq(unsigned int irq) {
         *UART_THR = c;
     }
     if (tx_is_empty()) {
-        *UART_IER &= ~(1 << 1);                // 清 ETBEI
+        *UART_IER &= ~IER_TIE;                  // ring 空就清 TIE 避免 THR empty livelock
     }
 }
 
@@ -207,7 +207,7 @@ void uart_putc(char c) {
 
     unsigned long saved = irq_save();      // 保護 tx_head 與 IER 不被 ISR 搶
     tx_put((unsigned char)c);
-    *UART_IER |= (1 << 1);                 // producer 職責：加料後確保 ETBEI=1，讓 ISR 來搬
+    *UART_IER |= IER_TIE;                  // producer 職責：加料後確保 TIE=1，讓 ISR 來搬
     irq_restore(saved);
 }
 
