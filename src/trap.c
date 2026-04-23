@@ -38,10 +38,10 @@ void do_trap(struct trap_frame *regs) {
             uart_puts("scause=");
             uart_int(regs->scause);
             uart_putc('\n');
-            uart_puts(" sepc=0x");
+            uart_puts("sepc=0x");
             uart_hex(regs->sepc);
             uart_putc('\n');
-            uart_puts(" stval=0x");
+            uart_puts("stval=0x");
             uart_int(regs->stval);
             uart_putc('\n');
             regs->sepc += 4;  /* skip ecall instruction, resume after it */
