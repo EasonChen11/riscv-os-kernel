@@ -35,13 +35,13 @@ void do_trap(struct trap_frame *regs) {
             // uart_puts("[trap] ecall  sepc=0x");
             // uart_hex(regs->sepc);
             uart_puts("=== S-Mode Trap ===\n");
-            uart_puts("scause=");
+            uart_puts("scause="); // ecall 會進 trap，scause=8；其他 exception 會有不同的 scause
             uart_int(regs->scause);
             uart_putc('\n');
-            uart_puts("sepc=0x");
+            uart_puts("sepc=0x"); // sepc 是 ecall 的 return address，sret 後會跳回去繼續執行 +4 的指令
             uart_hex(regs->sepc);
             uart_putc('\n');
-            uart_puts("stval=0x");
+            uart_puts("stval=0x"); // stval 通常會有 exception 的額外資訊，ecall 沒有特別資訊所以是 0
             uart_int(regs->stval);
             uart_putc('\n');
             regs->sepc += 4;  /* skip ecall instruction, resume after it */

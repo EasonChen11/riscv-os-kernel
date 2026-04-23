@@ -221,7 +221,7 @@ bool uart_try_getc(char *out) {
 char uart_getc(void) {
     char c;
     while (!uart_try_getc(&c))
-        ;                                  // spin；之後可換成 wfi
+        ;                                  // spin；之後可換成 wfi = wait-for-interrupt，需確保 wfi 前有開 SIE 以接受 UART IRQ 唤醒
     return c;
 }
 
