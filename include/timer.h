@@ -28,4 +28,8 @@ void add_timer(timer_callback_t cb, void* arg, int sec);
 // sec 合法範圍 1..10000；msg 會被複製到 event 內嵌 buffer（truncate 到 TIMER_MSG_LEN-1）。
 void setTimeout(int sec, const char* msg);
 
+// 切換 heartbeat 輸出開關。回傳切換後狀態：1=quiet（不印）、0=verbose（每 2 秒印）。
+// 不影響 timer 節拍，cb 仍依時間排程。
+int toggle_heartbeat(void);
+
 #endif /* TIMER_H */

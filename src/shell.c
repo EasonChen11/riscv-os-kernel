@@ -9,6 +9,7 @@
 #include "trap.h"
 #include "timer.h"
 #include "task.h"
+#include "irq.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -28,8 +29,40 @@ static void cmd_help(void) {
     uart_puts("  mmtest - run buddy allocator test.\n");
     uart_puts("  exec   - execute user program. usage: exec <filename>\n");
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
+    uart_puts("  heartbeat  - toggle heartbeat output (boot time print) on/off.\n");
     uart_puts("  demo  - run lab4_demo() (paste Adv2 test code in src/shell.c).\n");
 }
+
+// demo helper：基本 cb，只印 enter/exit。
+// arg 為 const char*（自由格式，建議 "PRIO NAME"，如 "9 HIGH-A"）。
+// 多個此 cb 並列可驗證 task_queue 的 priority 排序。
+static void demo_task_cb(void *arg) {
+    const char *s = (const char *)arg;
+    uart_puts("[Task] enter ");
+    uart_puts(s);
+    uart_putc('\n');
+    uart_puts("[Task] exit  ");
+    uart_puts(s);
+    uart_putc('\n');
+}
+
+// demo helper：搶佔 cb。enter 之後主動 enqueue 一個 PRIO_HIGH task 並立即 drain_tasks，
+// 觸發 nested drain 讓 HIGH 在 LOW 的 enter/exit 之間插隊跑完，再回來繼續 LOW 的 exit。
+// 用來驗證 drain_tasks 的 nested 搶佔（嚴格 > 比較 + running_prio 推高）。
+static void demo_preempt_cb(void *arg) {
+    const char *s = (const char *)arg;
+    uart_puts("[Task] enter ");
+    uart_puts(s);
+    uart_putc('\n');
+
+    add_task(demo_task_cb, (void *)"  9 HIGH (preempt)", PRIO_HIGH);
+    drain_tasks();   // nested drain；HIGH > running_prio(=LOW) 才會被 pop 跑
+
+    uart_puts("[Task] exit  ");
+    uart_puts(s);
+    uart_putc('\n');
+}
+
 
 // Adv2 助教驗證入口：shell 輸入 `demo` 即呼叫本函式。
 //
@@ -37,21 +70,33 @@ static void cmd_help(void) {
 //   typedef void (*task_callback_t)(void *arg);
 //   void add_task(task_callback_t cb, void *arg, int priority);
 //   void drain_tasks(void);    // 結尾自動呼叫以強制立刻依 priority 執行
-//
-// 範例（lab4.rst §Adv2）：
-//   void test_task_cb(void *arg) {
-//       uart_puts("[Task] Executing Priority ");
-//       uart_putc(*(char*)arg);
-//       uart_putc('\n');
-//   }
-//   add_task(test_task_cb, "3", 3);
+//   void demo_task_cb(void *arg);     // 基本 cb：印 enter/exit
+//   void demo_preempt_cb(void *arg);  // 搶佔 cb：enter 後 inject HIGH 模擬 nested
+//   常數：PRIO_LOW / PRIO_NORMAL / PRIO_HIGH
 static void lab4_demo(void) {
     // ↓↓↓ 在此貼入助教要求的測試程式碼 ↓↓↓
+    uart_puts("====== Lab4 Demo Start ======\n");
 
-
-    // ↑↑↑ 結尾的 drain_tasks() 會強制立刻按 priority 執行上面 enqueue 的 task；
-    //     若不加，等到下一次 trap exit（通常是下一次 heartbeat）才會跑
+    // ── Test 1：priority 排序 ───────────────────────────────
+    // 故意以亂序 enqueue，驗證 task_queue 會按 priority 降序執行。
+    // 預期：HIGH → NORMAL → LOW（每對 enter/exit 連續成對）。
+    // 註：irq_save 包起來避免中間 timer IRQ 觸發 trap drain 把已 enqueue 的 task 提前吐掉。
+    uart_puts("--- Test 1: priority ordering ---\n");
+    unsigned long s = irq_save();
+    add_task(demo_task_cb, (void *)"1 LOW",    PRIO_LOW);
+    add_task(demo_task_cb, (void *)"9 HIGH",   PRIO_HIGH);
+    add_task(demo_task_cb, (void *)"5 NORMAL", PRIO_NORMAL);
+    irq_restore(s);
     drain_tasks();
+
+    // ── Test 2：nested 搶佔 ──────────────────────────────────
+    // 單一 LOW 任務，cb 內部 inject HIGH。
+    // 預期：enter LOW → enter HIGH → exit HIGH → exit LOW。
+    uart_puts("--- Test 2: nested preemption ---\n");
+    add_task(demo_preempt_cb, (void *)"1 LOW (with preempt)", PRIO_LOW);
+    drain_tasks();
+
+    uart_puts("====== Lab4 Demo End ========\n");
 }
 
 // 對照 lab3.rst test_alloc_1：透過 dynalloc 統一 API 測試 buddy + chunk pool。
@@ -169,6 +214,9 @@ static void exec_cmd(const char* cmd) {
         exec_umode(cmd + 5);
     } else if (strncmp(cmd, "setTimeout ", 11) == 0) {
         cmd_setTimeout(cmd + 11);
+    } else if (strcmp(cmd, "heartbeat") == 0) {
+        int q = toggle_heartbeat();
+        uart_puts(q ? "heartbeat: quiet\n" : "heartbeat: verbose\n");
     } else if (strcmp(cmd, "demo") == 0) {
         lab4_demo();
     } else {
