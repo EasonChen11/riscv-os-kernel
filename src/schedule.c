@@ -16,11 +16,13 @@ void enqueue_runqueue(struct thread* t) {
 }
 
 void enqueue_zombie(struct thread* t) {
+    // 三步原子：rq_link 一個欄位在兩條互斥 list 間搬家（runqueue → zombie_list）
     list_del(&t->rq_link);
     t->state = THREAD_ZOMBIE;
     list_add_tail(&t->rq_link, &zombie_list);
 }
 
+// 由 idle 呼叫；thread 不能 free 自己（kstack 還在用），必須切走後由別人代清
 void kill_zombies(void) {
     while (!list_empty(&zombie_list)) {
         struct thread* z = list_entry(zombie_list.next, struct thread, rq_link);
@@ -56,7 +58,7 @@ void schedule(void) {
 
 void idle(void) {
     while (1) {
-        kill_zombies();
+        kill_zombies();   // idle 是唯一保證會被排到的 thread，當 reaper 不會餓到
         schedule();
     }
 }
