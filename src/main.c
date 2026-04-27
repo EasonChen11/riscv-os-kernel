@@ -9,8 +9,23 @@
 #include "plic.h"
 #include "trap.h"
 #include "task.h"
+#include "thread.h"
+#include "schedule.h"
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
+
+static void foo(void) {
+    for (int i = 0; i < 5; i++) {
+        uart_puts("Thread id: ");
+        uart_hex(kthread_get_current()->pid);
+        uart_puts(" iter ");
+        uart_hex(i);
+        uart_puts("\n");
+        for (volatile int j = 0; j < 50000000; j++) ;
+        schedule();
+    }
+    while (1) schedule();
+}
 
 void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_addr) {
     // Phase 0: 只解 DTB 與暫存器位址，此階段不可呼叫 uart_puts（interrupt 模式下 ring 尚無 drainer）
@@ -50,6 +65,18 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
+
+    schedule_init();
+    kthread_init();
+
+    struct thread* idle_thread = kthread_create(idle);
+    asm volatile("mv tp, %0" :: "r"(idle_thread));
+
+    kthread_create(foo);
+    kthread_create(foo);
+    kthread_create(foo);
+
+    idle();   /* 不會回來；shell 暫時跑不到，下個階段重新串 */
 
     shell_init();
     while (1) {

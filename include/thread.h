@@ -1,7 +1,9 @@
 #ifndef THREAD_H
 #define THREAD_H
 
-#define KSTACK_SIZE 4096
+#include "list.h"
+
+#define KSTACK_SIZE (1 << 12) // 4KB kernel stack per thread
 
 typedef void (*thread_func_t)(void);
 
@@ -22,7 +24,7 @@ struct thread {
     enum thread_state   state;
     int                 pid;
     void               *kstack;
-    struct thread      *next;
+    struct list_head    rq_link;   // 接到 run queue / 之後也接到 zombie list
 };
 
 void kthread_init(void);
