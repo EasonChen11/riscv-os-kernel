@@ -1,13 +1,36 @@
 #include "schedule.h"
+#include "buddy.h"
+#include "dynalloc.h"
+#include "uart.h"
 
 static struct list_head runqueue;
+static struct list_head zombie_list;
 
 void schedule_init(void) {
     init_list_head(&runqueue);
+    init_list_head(&zombie_list);
 }
 
 void enqueue_runqueue(struct thread* t) {
     list_add_tail(&t->rq_link, &runqueue);
+}
+
+void enqueue_zombie(struct thread* t) {
+    list_del(&t->rq_link);
+    t->state = THREAD_ZOMBIE;
+    list_add_tail(&t->rq_link, &zombie_list);
+}
+
+void kill_zombies(void) {
+    struct thread *z, *n;
+    list_for_each_entry_safe(z, n, &zombie_list, rq_link) {
+        list_del(&z->rq_link);
+        uart_puts("[zombie freed pid=");
+        uart_hex(z->pid);
+        uart_puts("]\n");
+        buddy_free_pages(z->kstack);
+        dynalloc_free(z);
+    }
 }
 
 void schedule(void) {
@@ -33,6 +56,7 @@ void schedule(void) {
 
 void idle(void) {
     while (1) {
+        kill_zombies();
         schedule();
     }
 }

@@ -23,7 +23,7 @@ static void foo(void) {
         for (volatile int j = 0; j < 50000000; j++) ;
         schedule();
     }
-    while (1) schedule();
+    thread_exit();
 }
 
 void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_addr) {

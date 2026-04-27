@@ -23,3 +23,9 @@ struct thread* kthread_get_current(void) {
     register struct thread* current asm("tp");
     return current;
 }
+
+void thread_exit(void) {
+    enqueue_zombie(kthread_get_current());
+    schedule();      /* 切走後不會回來——current 已是 ZOMBIE，schedule 不會再選到它 */
+    while (1);       /* 防呆：萬一 schedule 莫名其妙 return */
+}

@@ -30,6 +30,7 @@ struct thread {
 void kthread_init(void);
 struct thread* kthread_create(thread_func_t fn);
 struct thread* kthread_get_current(void);
+void thread_exit(void);
 
 extern void switch_to(struct thread* prev, struct thread* next);
 
