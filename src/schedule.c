@@ -11,17 +11,24 @@ void enqueue_runqueue(struct thread* t) {
 }
 
 void schedule(void) {
-    struct thread* current = kthread_get_current();
+    struct thread* prev = kthread_get_current();
 
-    /* current 永遠在 queue 中：直接走 next，碰到 sentinel 就 wrap 到 head */
-    struct list_head* next_link = current->rq_link.next;
-    if (next_link == &runqueue) next_link = runqueue.next;
+    /* RUNNING：rotate 自己到 queue 尾（round-robin）。
+       非 RUNNING（ZOMBIE/WAITING）表示 rq_link 已被別處移走，不該再碰。 */
+    if (prev->state == THREAD_RUNNING) {
+        list_del(&prev->rq_link);
+        list_add_tail(&prev->rq_link, &runqueue);
+    }
 
-    /* queue 只有 current 自己 ⇒ wrap 後又指回自己 */
-    if (next_link == &current->rq_link) return;
+    /* runqueue 不該空（至少 idle 在裡頭）；保險早退 */
+    if (list_empty(&runqueue)) return;
 
-    struct thread* next = list_entry(next_link, struct thread, rq_link);
-    switch_to(current, next);
+    struct thread* next = list_entry(runqueue.next, struct thread, rq_link);
+
+    /* rotate 完 first 就是 prev 自己 ⇒ queue 只剩自己一個 */
+    if (next == prev) return;
+
+    switch_to(prev, next);
 }
 
 void idle(void) {
