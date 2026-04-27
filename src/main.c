@@ -9,7 +9,6 @@
 #include "plic.h"
 #include "trap.h"
 #include "task.h"
-#include "thread.h"
 #include "schedule.h"
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
