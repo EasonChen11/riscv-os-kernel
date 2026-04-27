@@ -1,6 +1,4 @@
 #include "schedule.h"
-#include "thread.h"
-#include "list.h"
 
 static struct list_head runqueue;
 
