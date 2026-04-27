@@ -22,8 +22,8 @@ void enqueue_zombie(struct thread* t) {
 }
 
 void kill_zombies(void) {
-    struct thread *z, *n;
-    list_for_each_entry_safe(z, n, &zombie_list, rq_link) {
+    while (!list_empty(&zombie_list)) {
+        struct thread* z = list_entry(zombie_list.next, struct thread, rq_link);
         list_del(&z->rq_link);
         uart_puts("[zombie freed pid=");
         uart_hex(z->pid);
