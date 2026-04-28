@@ -10,6 +10,8 @@
 #include "trap.h"
 #include "task.h"
 #include "schedule.h"
+#include "exec.h"
+#include "thread.h"
 // schedule.h 已 declare start_preempt
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
@@ -79,12 +81,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     kthread_init();
     kthread_bootstrap_idle();
 
-    // kthread_create(foo);
-    // kthread_create(foo);
-    // kthread_create(foo);
-    kthread_create(shell_thread);   // shell 終於接回（kthread）；preemption 帶它跑
+    kthread_create(shell_thread);   // shell：preemption 帶它跑
 
-    start_preempt();   // 啟動 1/32 秒 preemption tick；之後 thread 不主動讓也會被切
+    start_preempt();
 
     idle();   /* 不會回來：main thread 變成 idle 跑 kill_zombies + schedule loop */
 }
