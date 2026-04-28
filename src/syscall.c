@@ -5,8 +5,6 @@
 #include "proc.h"
 #include "video.h"
 
-typedef long (*syscall_fn_t)(struct trap_frame *);
-
 // SYS_GETPID：回傳當前 thread 的 pid（kthread_create 已分配遞增 id）
 static long sys_getpid(struct trap_frame *tf) {
     (void)tf;
@@ -68,25 +66,23 @@ static long sys_usleep(struct trap_frame *tf) {
     return do_usleep((unsigned int)tf->a0);
 }
 
-// 預先佔好 NR_SYSCALL 槽；NULL 槽位由 dispatcher 統一回 -1
-static const syscall_fn_t syscall_table[NR_SYSCALL] = {
-    [SYS_GETPID]     = sys_getpid,
-    [SYS_UART_READ]  = sys_uart_read,
-    [SYS_UART_WRITE] = sys_uart_write,
-    [SYS_EXEC]       = sys_exec,
-    [SYS_FORK]       = sys_fork,
-    [SYS_WAITPID]    = sys_waitpid,
-    [SYS_EXIT]       = sys_exit,
-    [SYS_STOP]       = sys_stop,
-    [SYS_DISPLAY]    = sys_display,
-    [SYS_USLEEP]     = sys_usleep,
-};
-
+// switch dispatcher：避免 function pointer table 在 .rodata 留絕對位址，
+// kernel self-relocation 後 table entry 仍指向 link 時舊位置
 void do_syscall(struct trap_frame *tf) {
     long nr = (long)tf->a7;
-    if (nr < 0 || nr >= NR_SYSCALL || !syscall_table[nr]) {
-        tf->a0 = (uint64_t)-1L;
-        return;
+    long ret;
+    switch (nr) {
+        case SYS_GETPID:     ret = sys_getpid(tf);     break;
+        case SYS_UART_READ:  ret = sys_uart_read(tf);  break;
+        case SYS_UART_WRITE: ret = sys_uart_write(tf); break;
+        case SYS_EXEC:       ret = sys_exec(tf);       break;
+        case SYS_FORK:       ret = sys_fork(tf);       break;
+        case SYS_WAITPID:    ret = sys_waitpid(tf);    break;
+        case SYS_EXIT:       ret = sys_exit(tf);       break;
+        case SYS_STOP:       ret = sys_stop(tf);       break;
+        case SYS_DISPLAY:    ret = sys_display(tf);    break;
+        case SYS_USLEEP:     ret = sys_usleep(tf);     break;
+        default:             ret = -1;                 break;
     }
-    tf->a0 = (uint64_t)syscall_table[nr](tf);
+    tf->a0 = (uint64_t)ret;
 }
