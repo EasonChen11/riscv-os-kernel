@@ -4,6 +4,7 @@
 #include "plic.h"
 #include "task.h"
 #include "syscall.h"
+#include "schedule.h"
 
 // sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
 void trap_init(void) {
@@ -47,4 +48,12 @@ void do_trap(struct trap_frame *regs) {
     // nested IRQ 進來會再走一次 do_trap → drain_tasks，自然形成 preemption
     // 與 nested interrupt。trap.S 已存 sstatus/sepc，nested 下兩份 frame 不互相覆寫。
     drain_tasks();
+
+    // BE3 timer-driven preemption：preempt_tick_cb 在 drain_tasks 內標旗，
+    // 在這裡（trap 即將出去前）才呼叫 schedule。時機選這裡的理由是 stack 整潔
+    // ──drain_tasks 已收尾、sp 在 trap_frame 底部，schedule 切過去再切回來 sp 仍正確。
+    if (need_resched) {
+        need_resched = 0;
+        schedule();
+    }
 }

@@ -24,6 +24,14 @@ void handle_timer_interrupt(void);
 // 可在 ISR 或 thread 上下文呼叫（內部自己 irq_save）。
 void add_timer(timer_callback_t cb, void* arg, int sec);
 
+// sub-second 版本：直接接 raw mtime ticks，preempt tick / usleep 用。
+// 內部行為跟 add_timer 一致，差別只在不做 sec * CPU_FREQ 轉換。
+void add_timer_ticks(timer_callback_t cb, void* arg, unsigned long ticks);
+
+// 取 CPU mtime 的 frequency（Hz），讓 caller 自己算 ticks。
+// schedule 用它算 1/32 秒對應幾個 tick（CPU_FREQ / 32）。
+unsigned long timer_get_freq(void);
+
 // shell setTimeout 命令：sec 秒後輸出 "[setTimeout cmd=Xs fired=Ys] MESSAGE"。
 // sec 合法範圍 1..10000；msg 會被複製到 event 內嵌 buffer（truncate 到 TIMER_MSG_LEN-1）。
 void setTimeout(int sec, const char* msg);

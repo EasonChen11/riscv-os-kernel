@@ -85,10 +85,11 @@ static void timer_queue_insert(struct timer_event* e) {
     irq_restore(s);
 }
 
-// 註冊 one-shot timer：sec 秒後排入 task queue 呼叫 cb(arg)。可在 ISR 或 thread 上下文呼叫。
-void add_timer(timer_callback_t cb, void* arg, int sec) {
-    if (sec <= 0) {
-        uart_puts("add_timer: invalid sec\n");
+// 註冊 one-shot timer：ticks 個 mtime tick 後排入 task queue 呼叫 cb(arg)。
+// 可在 ISR 或 thread 上下文呼叫。preempt / usleep 等 sub-second 場景直接用這個。
+void add_timer_ticks(timer_callback_t cb, void* arg, unsigned long ticks) {
+    if (ticks == 0) {
+        uart_puts("add_timer_ticks: invalid ticks\n");
         return;
     }
     unsigned long now;
@@ -96,14 +97,27 @@ void add_timer(timer_callback_t cb, void* arg, int sec) {
 
     struct timer_event* e = pool_alloc();
     if (!e) {
-        uart_puts("add_timer: pool full\n");
+        uart_puts("add_timer_ticks: pool full\n");
         return;
     }
     e->callback    = cb;
     e->arg         = arg;
-    e->expire_tick = now + (unsigned long)sec * CPU_FREQ;
+    e->expire_tick = now + ticks;
 
     timer_queue_insert(e);
+}
+
+// 秒級包裝：把 sec 換算成 ticks 後委派給 add_timer_ticks。
+void add_timer(timer_callback_t cb, void* arg, int sec) {
+    if (sec <= 0) {
+        uart_puts("add_timer: invalid sec\n");
+        return;
+    }
+    add_timer_ticks(cb, arg, (unsigned long)sec * CPU_FREQ);
+}
+
+unsigned long timer_get_freq(void) {
+    return CPU_FREQ;
 }
 
 // 執行在 bottom-half（task context, SIE=1）。arg 指向 shell 替它 alloc 的 ctx。

@@ -2,9 +2,14 @@
 #include "buddy.h"
 #include "dynalloc.h"
 #include "uart.h"
+#include "timer.h"
+#include "task.h"
 
 static struct list_head runqueue;
 struct list_head zombie_list;          // proc.c 也會 enqueue（waitpid reap、stop）
+
+volatile int need_resched = 0;
+#define PREEMPT_HZ 32                  // 1/32 秒一次 schedule check
 
 void schedule_init(void) {
     init_list_head(&runqueue);
@@ -39,6 +44,7 @@ void kill_zombies(void) {
 
 void schedule(void) {
     struct thread* prev = kthread_get_current();
+    if (!prev) return;   // boot 早期 tp 還沒被 kthread_bootstrap_idle 設好；保險早退
 
     /* RUNNING：rotate 自己到 queue 尾（round-robin）。
        非 RUNNING（ZOMBIE/WAITING）表示 rq_link 已被別處移走，不該再碰。 */
@@ -63,4 +69,18 @@ void idle(void) {
         kill_zombies();   // idle 是唯一保證會被排到的 thread，當 reaper 不會餓到
         schedule();
     }
+}
+
+// preempt 心跳：跑在 task context (SIE=1)。先自我重排下一拍，再標 need_resched
+// 讓本次 trap exit 前 do_trap 會呼叫 schedule()。不直接 schedule 的原因：
+// 1) cb 在 task context 內 schedule 會切走 task context，drain_tasks 結束點亂掉
+// 2) 統一在 trap exit 一處呼叫 schedule，避免散落在多個 ISR / cb 內
+static void preempt_tick_cb(void* arg) {
+    (void)arg;
+    add_timer_ticks(preempt_tick_cb, (void*)0, timer_get_freq() / PREEMPT_HZ);
+    need_resched = 1;
+}
+
+void start_preempt(void) {
+    add_timer_ticks(preempt_tick_cb, (void*)0, timer_get_freq() / PREEMPT_HZ);
 }
