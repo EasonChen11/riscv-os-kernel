@@ -221,6 +221,11 @@ bool uart_try_getc(char *out) {
 char uart_getc(void) {
     char c;
     while (!uart_try_getc(&c)) {
+        // 從 trap 進來（如 sys_uart_read）時 sstatus.SIE 被 hardware 清 0，
+        // 任何 schedule 切到的 thread 都 SIE=0，RX IRQ 永不來、ring 永遠空。
+        // 這裡顯式 csrsi 把 SIE 開回來，讓 IRQ 可以填 ring；trap exit 用
+        // trap_frame 內存的舊 sstatus 還原，臨時開的 SIE 不會洩漏到 user。
+        asm volatile("csrsi sstatus, 2");
         // 沒 input 就讓出 CPU 給其他 thread；BE3 timer-driven preemption 下，
         // tight spin 會跟切換 race（observed: 加 shell 進 run queue 後系統卡死）。
         // schedule() 內 boot 早期 tp 為 NULL 會早退，bootloader 階段呼叫安全。
