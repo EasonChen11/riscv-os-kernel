@@ -41,6 +41,13 @@ void exec_umode(const char *path) {
     unsigned long kstack_top = (unsigned long)me->kstack + KSTACK_SIZE;
     unsigned long load_addr  = (unsigned long)image;
 
+    // 從 csrw sscratch 到 sret 之間若被 preempt 打斷，trap.S 會把當下
+    // sscratch 換出、schedule 切到別 thread；switch_to 不存 sscratch，
+    // 切回來繼續跑 sret 後 sscratch 是別人的 kstack_top，user 第一次 ecall
+    // 就會把 trap_frame 寫到別人的 kstack 上。所以整段必須 SIE=0。
+    // sret 後 SIE 從 SPIE 還原，user 跑起來中斷一樣正常。
+    __asm__ volatile("csrci sstatus, 2");
+
     unsigned long sstatus;
     __asm__ volatile("csrr %0, sstatus" : "=r"(sstatus));
     sstatus &= ~(1UL << 8);  /* SPP = 0  → return to U-mode */
