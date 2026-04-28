@@ -20,6 +20,11 @@ static const void *cpio_lookup(const char *path) {
 
 // kernel thread 第一次跳 U-mode：手動 csrw sscratch/sstatus/sepc 後 sret，一去不回。
 // 沒走 trap_frame 路徑（沒 trap 進來過），所以不能像 do_exec 那樣 patch tf。
+//
+// 重要：必須切 user 的 sp 跟 sscratch 到不同 stack，**不能沿用當下 kernel sp**：
+//   - user sp 設 ustack top：user 在 ustack 內 push frame，trap 進來不會撞
+//   - sscratch 設 kstack top：trap.S push trap_frame 在 kstack 內，跟 ustack 隔離
+//   兩條 stack 必須在不同 page，否則 trap_frame 跟 user stack 重疊（發現的 BUG）
 void exec_umode(const char *path) {
     const void *image = cpio_lookup(path);
     if (!image) {
@@ -28,14 +33,21 @@ void exec_umode(const char *path) {
         uart_putc('\n');
         return;
     }
-    unsigned long load_addr = (unsigned long)image;
+    struct thread *me = kthread_get_current();
+    if (!me->ustack) me->ustack = buddy_alloc_pages(0);
+    unsigned long ustack_top = (unsigned long)me->ustack + PAGE_SIZE;
+    unsigned long kstack_top = (unsigned long)me->kstack + KSTACK_SIZE;
+    unsigned long load_addr  = (unsigned long)image;
+
     unsigned long sstatus;
     __asm__ volatile("csrr %0, sstatus" : "=r"(sstatus));
     sstatus &= ~(1UL << 8);  /* SPP = 0  → return to U-mode */
-    sstatus |=  (1UL << 5);  /* SPIE = 1 → enable interrupts after sret */
-    __asm__ volatile("csrw sscratch, sp");
-    __asm__ volatile("csrw sstatus, %0" :: "r"(sstatus));
-    __asm__ volatile("csrw sepc,    %0" :: "r"(load_addr));
+    sstatus |=  (1UL << 5);  /* SPIE = 1 → IRQ 在 sret 後恢復 */
+
+    __asm__ volatile("csrw sscratch, %0" :: "r"(kstack_top));   // ★ kstack top，不是當下 sp
+    __asm__ volatile("csrw sstatus,  %0" :: "r"(sstatus));
+    __asm__ volatile("csrw sepc,     %0" :: "r"(load_addr));
+    __asm__ volatile("mv   sp,       %0" :: "r"(ustack_top));    // ★ 切 user sp 到 ustack
     __asm__ volatile("sret");
     __builtin_unreachable();
 }
