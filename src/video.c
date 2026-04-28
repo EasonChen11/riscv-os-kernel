@@ -11,7 +11,6 @@
 #include "video.h"
 #include "string.h"
 
-#define FB_BASE   0x87000000UL
 #define XRGB8888  875713112        /* "XR24" → little-endian fourcc */
 
 #define QEMU_PACKED __attribute__((packed))
@@ -105,16 +104,35 @@ static int fw_cfg_find_file(const char* name) {
     return -1;
 }
 
-// QEMU 沒模擬 D-cache，flush_dcache 只下 memory barrier 即可。OrangePi RV2 板
-// 上 D-cache 真實存在，commit #12 會把這條改成 cbo.flush（用 .word raw encoding，
-// 因為板上 toolchain 沒 zicbom extension，gas 不認 cbo.flush mnemonic）。
+#define CACHE_BLOCK_SIZE 64
+
+// QEMU 路徑：沒模擬 D-cache，memory barrier 就夠。
+// OrangePi 路徑：D-cache 實際存在，display controller 直接從 DRAM 讀，不 flush
+// 會殘影／花屏。toolchain 沒 zicbom extension（gas 不認 cbo.flush mnemonic），
+// 用 .word 0x0025200F 直寫 cbo.flush 0(a0) 的 raw encoding 繞過。
 static void flush_dcache(void* addr, unsigned long len) {
+#ifdef QEMU
     (void)addr;
     (void)len;
     __sync_synchronize();
+#else
+    unsigned long start = (unsigned long)addr & ~(CACHE_BLOCK_SIZE - 1);
+    __sync_synchronize();
+    for (unsigned long line = start;
+         line < (unsigned long)addr + len;
+         line += CACHE_BLOCK_SIZE) {
+        unsigned long v = line;
+        __asm__ __volatile__("mv a0, %0\n\t"
+                             ".word 0x0025200F"      /* cbo.flush 0(a0) */
+                             :: "r"(v)
+                             : "memory", "a0");
+        __sync_synchronize();
+    }
+#endif
 }
 
 void video_init(void) {
+#ifdef QEMU
     struct RAMFBCfg cfg = {
         .addr   = bswap64(FB_BASE),
         .fourcc = bswap32(XRGB8888),
@@ -127,6 +145,9 @@ void video_init(void) {
     if (sel < 0) return;   // QEMU 沒帶 -device ramfb 就無聲跳過，kernel 還能跑
     uint32_t control = (sel << 16) | FW_CFG_DMA_CTL_SELECT | FW_CFG_DMA_CTL_WRITE;
     fw_cfg_dma_transfer(&cfg, sizeof(cfg), control);
+#else
+    /* OrangePi RV2：U-Boot 開機已配置好 framebuffer，這裡無事可做 */
+#endif
 }
 
 // 把 bmp 置中貼進 framebuffer。bmp 格式假設跟 FB 同樣 XRGB8888。

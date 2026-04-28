@@ -5,9 +5,17 @@
 #define FB_HEIGHT 1080
 #define FB_BPP    4               /* XRGB8888 = 4 byte/pixel */
 
-// QEMU ramfb：透過 fw_cfg 把自選的 FB_BASE 註冊成 ramfb 表面。
-// 必須在 QEMU 啟動時加 -device ramfb 才有效；OrangePi RV2 板上由 U-Boot 預設好，
-// 那邊改用另一套（commit #12 處理），目前 build 只驅動 QEMU 路徑。
+// 兩條編譯路徑：
+//   QEMU define（Makefile run target 加 -DQEMU）：FB_BASE 自選空閒 RAM，
+//                                                  video_init 透過 fw_cfg 跟 ramfb 註冊
+//   無 QEMU define（OrangePi RV2 build）：FB_BASE 使用 U-Boot 預設好的硬體 base，
+//                                          video_init 不必做 fw_cfg
+#ifdef QEMU
+#define FB_BASE 0x87000000UL
+#else
+#define FB_BASE 0x7F700000UL    /* OrangePi RV2 U-Boot 預設 framebuffer base */
+#endif
+
 void video_init(void);
 
 // 把 width*height 的 XRGB8888 影像置中拷貝到 framebuffer，
