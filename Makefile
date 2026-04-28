@@ -91,7 +91,12 @@ USER_OBJS    += $(USER_S_SRCS:$(USER_DIR)/%.S=$(USER_BUILD)/%_s.o)
 # absolute address 在 -Ttext=0 + medany 下會被 ld lower 成「binary offset」
 # （hardcoded immediate），跑時 base ≠ 0 直接 load fault。
 # -fpie 生成 PC-relative reference (auipc + addi)，runtime base 不影響。
-USER_CFLAGS  = -march=rv64gc_zifencei -mcmodel=medany -fpie -ffreestanding -nostdlib -g -Wall -I$(USER_DIR)
+USER_CFLAGS  = -march=rv64gc_zifencei -mcmodel=medany -fpie -fomit-frame-pointer -ffreestanding -nostdlib -g -Wall -I$(USER_DIR)
+# -fomit-frame-pointer：讓 local var (&cnt) 用 sp + offset 算。預設 -O0 用 s0
+# 當 frame pointer，s0 是 callee-saved 不被 syscall 改 / trap_frame 又會複製
+# parent 的 s0 → fork 後 child 的 &cnt 變成 parent ustack 位址。do_fork 只調
+# trap_frame.sp，沒法調 s0。omit frame pointer 後 &cnt 跟 sp 同步，符合 lab5
+# fork_test reference 行為。
 
 usrprg: $(USER_BIN)
 
