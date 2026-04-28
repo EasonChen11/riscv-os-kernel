@@ -12,6 +12,9 @@ void init_list_head(struct list_head *head);
 void list_add(struct list_head *new, struct list_head *head);
 // Deletes an entry from the list
 void list_del(struct list_head *entry);
+// 摘下 entry 並把它變回自鏈狀態（safe：之後對它再 list_del 是 noop）
+// list_del 之後若還可能對 entry 做 list_del 或 list_empty 檢查，用這個版本
+void list_del_init(struct list_head *entry);
 // Checks if the list is empty
 int list_empty(const struct list_head *head);
 

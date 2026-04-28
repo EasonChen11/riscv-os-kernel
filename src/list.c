@@ -28,6 +28,11 @@ static inline void __list_del(struct list_head *prev, struct list_head *next){
 void list_del(struct list_head *entry){
     __list_del(entry->prev, entry->next);
 }
+
+void list_del_init(struct list_head *entry){
+    __list_del(entry->prev, entry->next);
+    init_list_head(entry);
+}
 // Checks if the list is empty, 如果循環代表空的
 int list_empty(const struct list_head *head){
     return head->next == head;

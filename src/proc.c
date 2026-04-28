@@ -111,8 +111,7 @@ void do_exit(int status) {
     struct thread *me = kthread_get_current();
 
     me->state = THREAD_ZOMBIE;
-    list_del(&me->rq_link);
-    init_list_head(&me->rq_link);   // 之後 waitpid 可能再 list_add_tail 進 zombie_list
+    list_del_init(&me->rq_link);    // init 是為了之後若被加進 zombie_list（含 list_del 路徑）安全
 
     // 喚醒 waiting parent（若條件符合）
     struct thread *p = find_pid(me->ppid);
