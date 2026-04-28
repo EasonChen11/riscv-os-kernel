@@ -10,6 +10,8 @@
 #include "timer.h"
 #include "task.h"
 #include "irq.h"
+#include "video.h"
+#include "proc.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -31,6 +33,33 @@ static void cmd_help(void) {
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
     uart_puts("  heartbeat  - toggle heartbeat output (boot time print) on/off.\n");
     uart_puts("  demo       - run lab4_demo() (paste Adv2 test code in src/shell.c).\n");
+    uart_puts("  vidtest    - draw a 256x256 RGB gradient via video_bmp_display.\n");
+    uart_puts("  sleeptest  - sleep 1 second via do_usleep, then return to prompt.\n");
+}
+
+// vidtest：在 framebuffer 中央畫一張 256x256 漸層方塊
+// QEMU 預設 -display none 看不到視窗，要拿掉或加 -display gtk 才看得到
+// OrangePi RV2 板上插 HDMI 直接看得到
+static void cmd_vidtest(void) {
+    static unsigned int tile[256 * 256];
+    for (int y = 0; y < 256; y++) {
+        for (int x = 0; x < 256; x++) {
+            unsigned int r = x;          // 紅 X 軸漸層
+            unsigned int g = y;          // 綠 Y 軸漸層
+            unsigned int b = (x + y) / 2;
+            tile[y * 256 + x] = (r << 16) | (g << 8) | b;
+        }
+    }
+    video_bmp_display(tile, 256, 256);
+    uart_puts("vidtest: 256x256 gradient drawn at framebuffer center\n");
+}
+
+// sleeptest：示範 do_usleep 把 thread 標 WAITING 1 秒、被 timer callback 喚回。
+// 期間 shell thread 不在 run queue，CPU 完全給其他 thread。
+static void cmd_sleeptest(void) {
+    uart_puts("sleeptest: sleeping 1 sec...\n");
+    do_usleep(1000000);   // 1 sec = 1,000,000 usec
+    uart_puts("sleeptest: woke up\n");
 }
 
 // demo helper：基本 cb，只印 enter/exit。
@@ -219,6 +248,10 @@ static void exec_cmd(const char* cmd) {
         uart_puts(q ? "heartbeat: quiet\n" : "heartbeat: verbose\n");
     } else if (strcmp(cmd, "demo") == 0) {
         lab4_demo();
+    } else if (strcmp(cmd, "vidtest") == 0) {
+        cmd_vidtest();
+    } else if (strcmp(cmd, "sleeptest") == 0) {
+        cmd_sleeptest();
     } else {
         cmd_unknown(cmd);
     }
