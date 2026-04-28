@@ -3,6 +3,7 @@
 #include "thread.h"
 #include "exec.h"
 #include "proc.h"
+#include "video.h"
 
 typedef long (*syscall_fn_t)(struct trap_frame *);
 
@@ -56,6 +57,17 @@ static long sys_stop(struct trap_frame *tf) {
     return do_stop((long)tf->a0);
 }
 
+// SYS_DISPLAY：把 user 提供的 BMP（XRGB8888）置中拷進 framebuffer
+static long sys_display(struct trap_frame *tf) {
+    video_bmp_display((unsigned int *)tf->a0, (int)tf->a1, (int)tf->a2);
+    return 0;
+}
+
+// SYS_USLEEP：阻塞 usec 微秒；期間 thread 不在 run queue，CPU 讓給別人
+static long sys_usleep(struct trap_frame *tf) {
+    return do_usleep((unsigned int)tf->a0);
+}
+
 // 預先佔好 NR_SYSCALL 槽；NULL 槽位由 dispatcher 統一回 -1
 static const syscall_fn_t syscall_table[NR_SYSCALL] = {
     [SYS_GETPID]     = sys_getpid,
@@ -66,6 +78,8 @@ static const syscall_fn_t syscall_table[NR_SYSCALL] = {
     [SYS_WAITPID]    = sys_waitpid,
     [SYS_EXIT]       = sys_exit,
     [SYS_STOP]       = sys_stop,
+    [SYS_DISPLAY]    = sys_display,
+    [SYS_USLEEP]     = sys_usleep,
 };
 
 void do_syscall(struct trap_frame *tf) {

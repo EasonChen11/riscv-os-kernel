@@ -6,6 +6,7 @@
 #include "irq.h"
 #include "uart.h"
 #include "string.h"
+#include "timer.h"
 
 extern void ret_from_exception(void);
 
@@ -145,3 +146,35 @@ long do_stop(long pid) {
     list_del_init(&t->child_link);
     return 0;
 }
+
+// usleep：把自己標 WAITING、排 timer，到期 callback 把自己塞回 run queue。
+// 比起 busy-wait usleep 更省 CPU；schedule 切走後別人能跑。
+struct sleep_ctx { struct thread* t; };
+
+static void sleep_wake(void* arg) {
+    struct sleep_ctx* c = (struct sleep_ctx*)arg;
+    unsigned long flags = irq_save();
+    c->t->state = THREAD_RUNNING;
+    enqueue_runqueue(c->t);
+    irq_restore(flags);
+    dynalloc_free(c);
+}
+
+long do_usleep(unsigned int usec) {
+    if (usec == 0) return 0;
+    struct sleep_ctx* c = (struct sleep_ctx*)dynalloc_alloc(sizeof(*c));
+    if (!c) return -1;
+    c->t = kthread_get_current();
+    unsigned long ticks = (unsigned long)usec * (timer_get_freq() / 1000000UL);
+    add_timer_ticks(sleep_wake, c, ticks);
+
+    unsigned long flags = irq_save();
+    c->t->state = THREAD_WAITING;
+    list_del_init(&c->t->rq_link);
+    irq_restore(flags);
+
+    schedule();   // 醒來時 sleep_wake 已把 c->t 塞回 run queue
+    return 0;
+}
+
+

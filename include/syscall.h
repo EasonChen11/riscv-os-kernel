@@ -20,6 +20,8 @@ enum {
     SYS_WAITPID    = 5,
     SYS_EXIT       = 6,
     SYS_STOP       = 7,
+    SYS_DISPLAY    = 8,    // a0=BMP*, a1=width, a2=height
+    SYS_USLEEP     = 9,    // a0=microseconds；wake-up driven by add_timer_ticks
     NR_SYSCALL,
 };
 

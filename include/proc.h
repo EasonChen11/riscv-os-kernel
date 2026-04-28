@@ -18,4 +18,8 @@ long do_stop(long pid);
 // 用 pid 反查 thread；找不到或目標已是 ZOMBIE 都回 NULL
 struct thread *find_pid(int pid);
 
+// 把當前 thread 標 WAITING 並排 timer，usec 微秒後被 sleep_wake 喚回 run queue。
+// 醒來才 return 0；caller 不需要 retry。
+long do_usleep(unsigned int usec);
+
 #endif /* PROC_H */
