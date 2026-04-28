@@ -67,8 +67,11 @@ long do_fork(struct trap_frame *parent_tf) {
         c->ustack = (void *)0;
     }
 
-    // 4. child 的 fork 回傳值 = 0
+    // 4. child 的 fork 回傳值 = 0；同時 patch tp，避免 trap exit 從 frame load
+    //    回 parent 的 tp（switch_to 雖然 mv tp, a1 過，ret_from_exception 又會
+    //    從 trap_frame.tp 還原），導致 child 用 parent 的 thread pointer。
     child_tf->a0 = 0;
+    child_tf->tp = (uint64_t)c;
 
     // 5. child 第一次被 schedule：跳 ret_from_exception，sp 指 trap_frame
     //    這樣 trap exit 把 GPR / CSR 從 child_tf ld 回來、sret 進 U-mode，
