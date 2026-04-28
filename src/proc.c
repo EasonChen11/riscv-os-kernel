@@ -91,7 +91,7 @@ long do_waitpid(long pid) {
         if (z) {
             long ret = z->pid;
             list_del(&z->child_link);
-            list_add_tail(&z->rq_link, &zombie_list);   // 交給 idle 收屍
+            enqueue_zombie(z);   // 交給 idle 收屍
             irq_restore(flags);
             return ret;
         }
@@ -123,7 +123,7 @@ void do_exit(int status) {
 
     // 沒 parent 認領的 zombie：直接丟 zombie_list 讓 idle 收
     if (!p) {
-        list_add_tail(&me->rq_link, &zombie_list);
+        enqueue_zombie(me);
     }
 
     schedule();   // 切走後不會回來
@@ -139,7 +139,7 @@ long do_stop(long pid) {
     }
     // WAITING thread 已不在 run queue，直接搬就好
     t->state = THREAD_ZOMBIE;
-    list_add_tail(&t->rq_link, &zombie_list);
+    enqueue_zombie(t);
     // 從 child list 卸下（避免 parent waitpid 看到一個 ZOMBIE 但無人 reap 的怪態）
     list_del(&t->child_link);
     init_list_head(&t->child_link);

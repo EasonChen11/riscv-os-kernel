@@ -15,10 +15,10 @@ void enqueue_runqueue(struct thread* t) {
     list_add_tail(&t->rq_link, &runqueue);
 }
 
+// 純 add：把 t 加進 zombie_list 等 idle 收屍。
+// caller 負責先 detach（list_del/list_del_init）並設 t->state = THREAD_ZOMBIE。
+// 拆成單一職責讓 do_exit / do_waitpid / do_stop 都能用同一個 enqueue 入口。
 void enqueue_zombie(struct thread* t) {
-    // 三步原子：rq_link 一個欄位在兩條互斥 list 間搬家（runqueue → zombie_list）
-    list_del(&t->rq_link);
-    t->state = THREAD_ZOMBIE;
     list_add_tail(&t->rq_link, &zombie_list);
 }
 
