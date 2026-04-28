@@ -12,6 +12,7 @@
 #include "irq.h"
 #include "video.h"
 #include "proc.h"
+#include "exec.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -240,7 +241,8 @@ static void exec_cmd(const char* cmd) {
     } else if (strcmp(cmd, "mmtest") == 0) {
         cmd_mmtest();
     } else if (strncmp(cmd, "exec ", 5) == 0) {
-        exec_umode(cmd + 5);
+        long pid = spawn_user(cmd + 5);
+        do_waitpid(pid);
     } else if (strncmp(cmd, "setTimeout ", 11) == 0) {
         cmd_setTimeout(cmd + 11);
     } else if (strcmp(cmd, "heartbeat") == 0) {

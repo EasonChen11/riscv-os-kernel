@@ -5,6 +5,8 @@
 #include "bootinfo.h"
 #include "thread.h"
 #include "buddy.h"
+#include "schedule.h"
+#include "proc.h"
 
 // 在 initrd 中找檔；找到回 image 起點（cpio entry filecontent），找不到回 NULL。
 // exec_umode 跟 do_exec 共用，避免兩條路重寫 cpio walk。
@@ -50,6 +52,28 @@ void exec_umode(const char *path) {
     __asm__ volatile("mv   sp,       %0" :: "r"(ustack_top));    // ★ 切 user sp 到 ustack
     __asm__ volatile("sret");
     __builtin_unreachable();
+}
+
+// shell 用：開新 thread 跑 exec_umode(path)，當前 thread 為 parent。
+// 一次只支援一個 in-flight spawn（path buffer 是靜態的）；實作 fork+exec 之後可以拆掉。
+static char spawn_path_buf[64];
+
+static void spawn_user_entry(void) {
+    exec_umode(spawn_path_buf);    // 成功不回；失敗印過字
+    do_exit(-1);                   // exec failed → 標 ZOMBIE，parent waitpid 會醒
+}
+
+long spawn_user(const char *path) {
+    int i;
+    for (i = 0; i < (int)sizeof(spawn_path_buf) - 1 && path[i]; i++)
+        spawn_path_buf[i] = path[i];
+    spawn_path_buf[i] = 0;
+
+    struct thread *parent = kthread_get_current();
+    struct thread *c = kthread_create(spawn_user_entry);
+    c->ppid = parent->pid;
+    list_add_tail(&c->child_link, &parent->children);
+    return c->pid;
 }
 
 // SYS_EXEC：U-mode process 換 user image。沿用當前 thread 的 kstack 與 trap_frame，
