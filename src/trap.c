@@ -3,6 +3,7 @@
 #include "timer.h"
 #include "plic.h"
 #include "task.h"
+#include "syscall.h"
 
 // sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
 void trap_init(void) {
@@ -31,20 +32,10 @@ void do_trap(struct trap_frame *regs) {
         }
     } else {
         if (cause_code == ENV_CALL_FROM_UMODE) { // scause=8 means ecall from U-mode
-            /* ecall from U-mode */
-            // uart_puts("[trap] ecall  sepc=0x");
-            // uart_hex(regs->sepc);
-            uart_puts("=== S-Mode Trap ===\n");
-            uart_puts("scause="); // ecall 會進 trap，scause=8；其他 exception 會有不同的 scause
-            uart_int(regs->scause);
-            uart_putc('\n');
-            uart_puts("sepc=0x"); // sepc 是 ecall 的 return address，sret 後會跳回去繼續執行 +4 的指令
-            uart_hex(regs->sepc);
-            uart_putc('\n');
-            uart_puts("stval=0x"); // stval 通常會有 exception 的額外資訊，ecall 沒有特別資訊所以是 0
-            uart_int(regs->stval);
-            uart_putc('\n');
-            regs->sepc += 4;  /* skip ecall instruction, resume after it */
+            // sepc 指向 ecall 本身；先 +4 再 dispatch，避免 syscall handler 修改 sepc
+            // 之後又被無條件覆寫的順序坑（例如 sigreturn 會整盤覆寫 trap_frame）
+            regs->sepc += 4;
+            do_syscall(regs);
         } else {
             uart_puts("Unknown exception: scause=");
             uart_int(regs->scause);
