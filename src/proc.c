@@ -141,7 +141,7 @@ long do_stop(long pid) {
     t->state = THREAD_ZOMBIE;
     enqueue_zombie(t);
     // 從 child list 卸下（避免 parent waitpid 看到一個 ZOMBIE 但無人 reap 的怪態）
-    list_del(&t->child_link);
-    init_list_head(&t->child_link);
+    // list_del_init 因為 child_link 之後不會再加進任何 list，留著 stale prev/next 是雷
+    list_del_init(&t->child_link);
     return 0;
 }
