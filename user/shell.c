@@ -25,6 +25,35 @@ static void cmd_pid(void) {
     putc_('\n');
 }
 
+void fork_test() {
+  printf("Fork test (pid = %d)\n", getpid());
+  int cnt = 1;
+  int ret = 0;
+  if ((ret = fork()) == 0) {
+      long cur_sp;
+      asm volatile("mv %0, sp" : "=r"(cur_sp));
+      printf("child1: pid = %d, cnt = %d, &cnt = %p, sp = %p\n", getpid(), cnt, &cnt, cur_sp);
+      cnt++;
+
+      if ((ret = fork()) != 0) {
+          asm volatile("mv %0, sp" : "=r"(cur_sp));
+          printf("child1: pid = %d, cnt = %d, &cnt = %p, sp = %p\n", getpid(), cnt, &cnt, cur_sp);
+          waitpid(ret);
+      } else {
+          while (cnt < 5) {
+              asm volatile("mv %0, sp" : "=r"(cur_sp));
+              printf("child2: pid = %d, cnt = %d, &cnt = %p, sp = %p\n", getpid(), cnt, &cnt, cur_sp);
+              for (int i = 0; i < 1000000000; i++);
+              cnt++;
+          }
+      }
+  } else {
+      printf("parent: pid = %d, child pid = %d\n", getpid(), ret);
+      waitpid(ret);
+  }
+  exit(0);
+}
+
 void user_main(void) {
     puts_("OSC test user program\n");
     char buf[128];
@@ -35,6 +64,7 @@ void user_main(void) {
         if      (strcmp(buf, "help") == 0) cmd_help();
         else if (strcmp(buf, "pid")  == 0) cmd_pid();
         else if (strcmp(buf, "exit") == 0) exit(0);
+        else if (strcmp(buf, "fork_test") == 0) fork_test();
         else                                puts_("Unknown command\n");
     }
 }
