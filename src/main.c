@@ -82,13 +82,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     kthread_create(foo);
     kthread_create(foo);
     kthread_create(foo);
+    kthread_create(shell_thread);   // shell 終於接回（kthread）；preemption 帶它跑
 
     start_preempt();   // 啟動 1/32 秒 preemption tick；之後 thread 不主動讓也會被切
 
-    idle();   /* 不會回來；shell 暫時跑不到，下個階段重新串 */
-
-    shell_init();
-    while (1) {
-        shell();
-    }
+    idle();   /* 不會回來：main thread 變成 idle 跑 kill_zombies + schedule loop */
 }

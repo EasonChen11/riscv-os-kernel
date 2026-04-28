@@ -224,6 +224,13 @@ static void exec_cmd(const char* cmd) {
     }
 }
 
+void shell_thread(void) {
+    shell_init();
+    while (1) {
+        shell();
+    }
+}
+
 void shell(void) {
     uart_puts("opi-rv2> ");
     while (1) {
