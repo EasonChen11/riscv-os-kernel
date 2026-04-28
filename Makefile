@@ -64,7 +64,7 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 run: CFLAGS += -DQEMU
 run: LDSCRIPT = qemu.ld
 run: build
-	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd initramfs.cpio -display none -serial stdio
+	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd initramfs.cpio -display none -serial stdio -device ramfb
 
 # Cleanup Rule
 clean:

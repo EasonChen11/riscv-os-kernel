@@ -68,6 +68,13 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
 
+    // QEMU ramfb：fw_cfg 註冊 framebuffer。OrangePi RV2 沒 ramfb，
+    // 在那條路 video_init 會 fw_cfg_find_file 找不到無聲 return，安全。
+    {
+        extern void video_init(void);
+        video_init();
+    }
+
     schedule_init();
     kthread_init();
     kthread_bootstrap_idle();
