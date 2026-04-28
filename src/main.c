@@ -79,9 +79,9 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     kthread_init();
     kthread_bootstrap_idle();
 
-    kthread_create(foo);
-    kthread_create(foo);
-    kthread_create(foo);
+    // kthread_create(foo);
+    // kthread_create(foo);
+    // kthread_create(foo);
     kthread_create(shell_thread);   // shell 終於接回（kthread）；preemption 帶它跑
 
     start_preempt();   // 啟動 1/32 秒 preemption tick；之後 thread 不主動讓也會被切
