@@ -1,6 +1,5 @@
-# 14 個 callee-saved register 存到 a0 (prev->context)、再從 a1 (next->context) 載回
 # byte offset 0/8/16~104 對齊 struct cpu_context 排版（必須是 struct thread 第一成員）
-# 結尾 mv tp, a1：tp 寄存器即 current thread pointer
+# 14 個 callee-saved register 存到 a0 (prev->context)、再從 a1 (next->context) 載回
 .global switch_to
 switch_to:
     sd ra,  0(a0)
@@ -33,5 +32,6 @@ switch_to:
     ld s10, 96(a1)
     ld s11, 104(a1)
 
+    # tp 寄存器即 current thread pointer
     mv tp, a1
     ret
