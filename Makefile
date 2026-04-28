@@ -65,6 +65,11 @@ run: CFLAGS += -DQEMU
 run: LDSCRIPT = qemu.ld
 run: build
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd initramfs.cpio -display none -serial stdio -device ramfb
+	# stdio 接 UART：手動 type 應該 char-by-char 進 shell；
+	# 如果 host terminal 在 cooked mode 沒看到 echo，按 Enter 仍會送整行進 QEMU。
+	# pipe 測試（stdin 來自 echo/printf）建議 (sleep 2; printf "...") | make run，
+	# 否則 boot 早期 RX FIFO 還沒就緒會吃掉前幾個 char。
+	# 退出 QEMU：Ctrl-A X
 
 # Cleanup Rule
 clean:
