@@ -22,4 +22,8 @@ int  atoi(const char* s);
 void print_int(long n);
 int  readline(char* buf, int max);     /* 讀到 \n 為止，回 byte 數（不含 null） */
 
+/* 極簡 printf：支援 %d (long-wide) %x %p %s %c %%。RISC-V LP64 下 va_arg(long)
+ * 對 int / long 都正確（int 會被 sign-extend 成 64-bit slot 傳遞）。 */
+void printf(const char* fmt, ...);
+
 #endif /* USER_LIB_H */
