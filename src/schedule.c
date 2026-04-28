@@ -31,6 +31,7 @@ void kill_zombies(void) {
         uart_hex(z->pid);
         uart_puts("]\n");
         buddy_free_pages(z->kstack);
+        if (z->ustack) buddy_free_pages(z->ustack);
         dynalloc_free(z);
     }
 }

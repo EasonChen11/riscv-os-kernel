@@ -13,6 +13,7 @@ struct thread* kthread_create(thread_func_t fn) {
     t->pid          = next_thread_id++;
     t->state        = THREAD_RUNNING;          // 不是 RUNNING 的話 schedule 不會 rotate、永遠不會被選到
     t->kstack       = buddy_alloc_pages(0);    // 必須配 stack；sp=0 第一次切過去 prologue 寫 stack 就 fault
+    t->ustack       = (void *)0;               // 純 kernel thread；do_exec 第一次 swap 時才 lazy-alloc
     t->context.ra   = (unsigned long)fn;       // 第一次 switch_to 結尾 ret 會跳到這裡
     t->context.sp   = (unsigned long)t->kstack + KSTACK_SIZE;   // 棧頂（RISC-V stack 向下長）
     enqueue_runqueue(t);

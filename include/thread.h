@@ -24,6 +24,7 @@ struct thread {
     enum thread_state   state;
     int                 pid;
     void               *kstack;
+    void               *ustack;    // U-mode stack；純 kernel thread 為 NULL，do_exec 才 lazy-alloc
     struct list_head    rq_link;   // 接到 run queue / 之後也接到 zombie list
 };
 

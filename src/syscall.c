@@ -1,6 +1,7 @@
 #include "syscall.h"
 #include "uart.h"
 #include "thread.h"
+#include "exec.h"
 
 typedef long (*syscall_fn_t)(struct trap_frame *);
 
@@ -27,12 +28,19 @@ static long sys_uart_write(struct trap_frame *tf) {
     return n;
 }
 
+// SYS_EXEC：把當前 U-mode process 換成 path 指定的 image
+// 成功不回（trap exit 直接 sret 到新 entry），失敗回 -1
+static long sys_exec(struct trap_frame *tf) {
+    return do_exec((const char *)tf->a0, tf);
+}
+
 // 預先佔好 NR_SYSCALL 槽；NULL 槽位由 dispatcher 統一回 -1，
 // 後續 commit 加 handler 時直接 [SYS_FORK] = sys_fork 即可
 static const syscall_fn_t syscall_table[NR_SYSCALL] = {
     [SYS_GETPID]     = sys_getpid,
     [SYS_UART_READ]  = sys_uart_read,
     [SYS_UART_WRITE] = sys_uart_write,
+    [SYS_EXEC]       = sys_exec,
 };
 
 void do_syscall(struct trap_frame *tf) {
