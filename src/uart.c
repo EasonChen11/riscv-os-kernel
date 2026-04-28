@@ -220,8 +220,13 @@ bool uart_try_getc(char *out) {
 
 char uart_getc(void) {
     char c;
-    while (!uart_try_getc(&c))
-        ;                                  // spin；之後可換成 wfi = wait-for-interrupt，需確保 wfi 前有開 SIE 以接受 UART IRQ 唤醒
+    while (!uart_try_getc(&c)) {
+        // 沒 input 就讓出 CPU 給其他 thread；BE3 timer-driven preemption 下，
+        // tight spin 會跟切換 race（observed: 加 shell 進 run queue 後系統卡死）。
+        // schedule() 內 boot 早期 tp 為 NULL 會早退，bootloader 階段呼叫安全。
+        extern void schedule(void);
+        schedule();
+    }
     return c;
 }
 
