@@ -4,7 +4,7 @@
 #include "uart.h"
 
 static struct list_head runqueue;
-static struct list_head zombie_list;
+struct list_head zombie_list;          // proc.c 也會 enqueue（waitpid reap、stop）
 
 void schedule_init(void) {
     init_list_head(&runqueue);
@@ -27,6 +27,7 @@ void kill_zombies(void) {
     while (!list_empty(&zombie_list)) {
         struct thread* z = list_entry(zombie_list.next, struct thread, rq_link);
         list_del(&z->rq_link);
+        list_del(&z->all_link);          // 從 all_threads 摘下，find_pid 不再回它
         uart_puts("[zombie freed pid=");
         uart_hex(z->pid);
         uart_puts("]\n");

@@ -31,3 +31,12 @@ char* strchr(const char* s, int c) {
     }
     return (char*)0;
 }
+
+// freestanding 環境沒 libc memcpy；GCC 對 byte-loop 會 lower 成 memcpy call
+// （loop idiom recognition），所以這個 symbol 必須自己提供，不然 link 失敗。
+void* memcpy(void* dst, const void* src, unsigned long n) {
+    char* d = (char*)dst;
+    const char* s = (const char*)src;
+    while (n--) *d++ = *s++;
+    return dst;
+}

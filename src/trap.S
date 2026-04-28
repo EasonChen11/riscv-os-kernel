@@ -58,6 +58,10 @@ save_context:
     mv a0, sp
     call do_trap
 
+# fork 出來的 child 第一次被 schedule 時，ctx.ra 指這裡：sp 指向 child 自己的
+# trap_frame（do_fork 把 ctx.sp 設成 c->tf），直接走 trap exit 把暫存器 ld 回 user
+# 並 sret 進 U-mode，跳過完整 do_trap 流程。
+.global ret_from_exception
 ret_from_exception:
     ld s0, 8 * 32(sp)        # 讀回 sstatus
     andi s0, s0, (1 << 8)    # 檢查 SPP bit

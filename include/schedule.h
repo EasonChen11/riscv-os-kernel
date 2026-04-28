@@ -2,6 +2,9 @@
 #define SCHEDULE_H
 
 #include "thread.h"
+#include "list.h"
+
+extern struct list_head zombie_list;   // proc.c (waitpid / stop) 也會 enqueue 進來
 
 void schedule_init(void);
 void enqueue_runqueue(struct thread* t);

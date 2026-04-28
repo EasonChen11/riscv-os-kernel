@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "thread.h"
 #include "exec.h"
+#include "proc.h"
 
 typedef long (*syscall_fn_t)(struct trap_frame *);
 
@@ -34,13 +35,37 @@ static long sys_exec(struct trap_frame *tf) {
     return do_exec((const char *)tf->a0, tf);
 }
 
-// 預先佔好 NR_SYSCALL 槽；NULL 槽位由 dispatcher 統一回 -1，
-// 後續 commit 加 handler 時直接 [SYS_FORK] = sys_fork 即可
+// SYS_FORK：parent 拿 child pid，child 第一次跑時看到 a0=0
+static long sys_fork(struct trap_frame *tf) {
+    return do_fork(tf);
+}
+
+// SYS_WAITPID：sleep 等到 child exit；reap 成功回 child pid
+static long sys_waitpid(struct trap_frame *tf) {
+    return do_waitpid((long)tf->a0);
+}
+
+// SYS_EXIT：自己標 ZOMBIE 並切走，不返回
+static long sys_exit(struct trap_frame *tf) {
+    do_exit((int)tf->a0);
+    return 0;
+}
+
+// SYS_STOP：強制終止 pid，不能殺自己
+static long sys_stop(struct trap_frame *tf) {
+    return do_stop((long)tf->a0);
+}
+
+// 預先佔好 NR_SYSCALL 槽；NULL 槽位由 dispatcher 統一回 -1
 static const syscall_fn_t syscall_table[NR_SYSCALL] = {
     [SYS_GETPID]     = sys_getpid,
     [SYS_UART_READ]  = sys_uart_read,
     [SYS_UART_WRITE] = sys_uart_write,
     [SYS_EXEC]       = sys_exec,
+    [SYS_FORK]       = sys_fork,
+    [SYS_WAITPID]    = sys_waitpid,
+    [SYS_EXIT]       = sys_exit,
+    [SYS_STOP]       = sys_stop,
 };
 
 void do_syscall(struct trap_frame *tf) {
