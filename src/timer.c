@@ -19,7 +19,7 @@ static unsigned long CPU_FREQ = 10000000;
 
 // heartbeat 輸出開關：1=quiet（cb 仍跑、不印字）、0=verbose（每 2 秒印 boot time）。
 // volatile：可能由 shell thread 寫、heartbeat_cb 讀，跨 context 須避免編譯器 cache 到暫存器。
-static volatile int heartbeat_quiet = 0;
+static volatile int heartbeat_quiet = 1; // 預設 quiet，shell 可 toggle 開關
 
 int toggle_heartbeat(void) {
     heartbeat_quiet = !heartbeat_quiet;
