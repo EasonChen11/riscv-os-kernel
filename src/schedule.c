@@ -4,6 +4,7 @@
 #include "uart.h"
 #include "timer.h"
 #include "task.h"
+#include "irq.h"
 
 static struct list_head runqueue;
 struct list_head zombie_list;          // proc.c 也會 enqueue（waitpid reap、stop）
@@ -43,8 +44,16 @@ void kill_zombies(void) {
 }
 
 void schedule(void) {
+    /* runqueue 操作 + switch_to 必須 atomic：preempt 從 kernel thread context
+       (SIE=1) 呼叫 schedule 時，timer IRQ 可能在 list_del/add_tail 或 switch_to
+       的暫存器存讀中間 fire，遞迴跑進另一個 schedule。第一次 switch_to 寫
+       prev.context 還沒寫完，第二次切走後切回來 load 是 partial state → 炸。
+       irq_save 在這條 thread 的 context 內配對 restore；switch 到別 thread 跑
+       它自己的 schedule（也用同樣 pattern），不會洩漏。 */
+    unsigned long flags = irq_save();
+
     struct thread* prev = kthread_get_current();
-    if (!prev) return;   // boot 早期 tp 還沒被 kthread_bootstrap_idle 設好；保險早退
+    if (!prev) goto out;   // boot 早期 tp 還沒被 kthread_bootstrap_idle 設好；保險早退
 
     /* RUNNING：rotate 自己到 queue 尾（round-robin）。
        非 RUNNING（ZOMBIE/WAITING）表示 rq_link 已被別處移走，不該再碰。 */
@@ -54,14 +63,16 @@ void schedule(void) {
     }
 
     /* runqueue 不該空（至少 idle 在裡頭）；保險早退 */
-    if (list_empty(&runqueue)) return;
+    if (list_empty(&runqueue)) goto out;
 
     struct thread* next = list_entry(runqueue.next, struct thread, rq_link);
 
     /* rotate 完 first 就是 prev 自己 ⇒ queue 只剩自己一個 */
-    if (next == prev) return;
+    if (next == prev) goto out;
 
     switch_to(prev, next);
+out:
+    irq_restore(flags);
 }
 
 void idle(void) {
