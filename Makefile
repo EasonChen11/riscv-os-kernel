@@ -86,8 +86,12 @@ USER_S_SRCS   = $(wildcard $(USER_DIR)/*.S)
 USER_OBJS     = $(USER_C_SRCS:$(USER_DIR)/%.c=$(USER_BUILD)/%_c.o)
 USER_OBJS    += $(USER_S_SRCS:$(USER_DIR)/%.S=$(USER_BUILD)/%_s.o)
 
-# 跟 kernel 共用 CFLAGS（rv64gc / freestanding / nostdlib）；I path 用 user/ 自己的
-USER_CFLAGS  = -march=rv64gc_zifencei -mcmodel=medany -fno-pie -ffreestanding -nostdlib -g -Wall -I$(USER_DIR)
+# 跟 kernel 共用 CFLAGS（rv64gc / freestanding / nostdlib），但 user binary 用 PIE：
+# user binary 由 cpio 載入，runtime base address 不固定（隨 cpio entry offset），
+# absolute address 在 -Ttext=0 + medany 下會被 ld lower 成「binary offset」
+# （hardcoded immediate），跑時 base ≠ 0 直接 load fault。
+# -fpie 生成 PC-relative reference (auipc + addi)，runtime base 不影響。
+USER_CFLAGS  = -march=rv64gc_zifencei -mcmodel=medany -fpie -ffreestanding -nostdlib -g -Wall -I$(USER_DIR)
 
 usrprg: $(USER_BIN)
 
@@ -100,7 +104,9 @@ $(USER_BUILD)/%_s.o: $(USER_DIR)/%.S
 	$(CC) $(USER_CFLAGS) -c $< -o $@
 
 $(USER_ELF): $(USER_OBJS) $(USER_LD)
-	$(LD) -T $(USER_LD) -o $@ $(USER_OBJS)
+	$(LD) -T $(USER_LD) --no-relax -o $@ $(USER_OBJS)
+	# --no-relax：阻止 ld 把 auipc+addi 的 PC-relative reference 折成 absolute
+	# immediate（在 -Ttext=0 下 image base=0 = link-time PC，relax 後失去 PIE 性質）
 
 $(USER_BIN): $(USER_ELF)
 	$(OBJCOPY) -O binary $< $@
