@@ -158,6 +158,14 @@ struct sleep_ctx { struct thread* t; };
 static void sleep_wake(void* arg) {
     struct sleep_ctx* c = (struct sleep_ctx*)arg;
     unsigned long flags = irq_save();
+    /* 若 thread 已被 stop / kill 變 ZOMBIE，不能再標 RUNNING + enqueue：
+     * 那會把已掛 zombie_list 的 thread 同時塞回 run queue，kill_zombies
+     * free 掉 kstack 後 schedule 切過去就 load 到 freed memory（scause=7） */
+    if (c->t->state != THREAD_WAITING) {
+        irq_restore(flags);
+        dynalloc_free(c);
+        return;
+    }
     c->t->state = THREAD_RUNNING;
     enqueue_runqueue(c->t);
     irq_restore(flags);
