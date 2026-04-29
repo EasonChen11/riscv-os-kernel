@@ -1,6 +1,7 @@
 #ifndef THREAD_H
 #define THREAD_H
 
+#include <stdbool.h>
 #include "list.h"
 #include "trap.h"
 
@@ -28,6 +29,7 @@ struct thread {
     void               *kstack;
     void               *ustack;      // U-mode stack；純 kernel thread 為 NULL
     int                 wait_pid;    // waitpid 等的 child pid；-1 表示任意
+    bool                is_kernel;   // true=kernel thread；保護 idle/shell 不被 user stop/kill 到
     struct list_head    rq_link;     // 接到 run queue / zombie list
     struct list_head    child_link;  // 接到 parent->children
     struct list_head    children;    // 自己的 child list head

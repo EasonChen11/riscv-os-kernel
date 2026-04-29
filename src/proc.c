@@ -138,6 +138,7 @@ void do_exit(int status) {
 long do_stop(long pid) {
     struct thread *t = find_pid(pid);
     if (!t || t == kthread_get_current()) return -1;
+    if (t->is_kernel) return -1;   // 擋下殺 idle / kernel-side shell 之類核心 thread
     if (t->state == THREAD_RUNNING) {
         list_del(&t->rq_link);
     }

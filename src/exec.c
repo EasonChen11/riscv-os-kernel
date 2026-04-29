@@ -37,6 +37,7 @@ void exec_umode(const char *path) {
     }
     struct thread *me = kthread_get_current();
     if (!me->ustack) me->ustack = buddy_alloc_pages(0);
+    me->is_kernel = false;   // 從這條 thread 切到 user image，stop/kill 該擋的保護解除
     unsigned long ustack_top = (unsigned long)me->ustack + PAGE_SIZE;
     unsigned long kstack_top = (unsigned long)me->kstack + KSTACK_SIZE;
     unsigned long load_addr  = (unsigned long)image;
@@ -91,6 +92,7 @@ long do_exec(const char *path, struct trap_frame *tf) {
     const void *image = cpio_lookup(path);
     if (!image) return -1;
     if (!me->ustack) me->ustack = buddy_alloc_pages(0);
+    me->is_kernel = false;   // 已是 user (能呼叫 SYS_EXEC 表示原本就是 user)；保險明確標一次
     tf->sepc    = (unsigned long)image;
     tf->sp      = (unsigned long)me->ustack + PAGE_SIZE;
     tf->sstatus &= ~(1UL << 8);   // SPP=0 → 回 U-mode
