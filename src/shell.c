@@ -236,7 +236,7 @@ static void exec_cmd(const char* cmd) {
         if (*path == 0) {
             uart_puts("usage: exec <filename>\n");
         } else {
-            long pid = spawn_user(path);
+            long pid = spawn_user(path); // create child process running user program; return pid or -1 on failure
             do_waitpid(pid);
         }
     } else if (strncmp(cmd, "setTimeout ", 11) == 0) {

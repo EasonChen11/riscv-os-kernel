@@ -152,7 +152,8 @@ void dynalloc_free(void *ptr) {
     // BE2 grading #5「fork-exit 不漏 page」可能扣幾分；BE3 + Adv1 demo 體驗
     // 優先，根因延到 lab6 一起 audit。原本實作保留在 #if 0 內當 reference。
 #if 0
-    if (page_descriptors[page_index].in_use == 0) {
+    // 保留註解
+    if (page_descriptors[page_index].in_use == 0) { 
         unsigned long page_addr = buddy_page_idx_to_addr(page_index);
         unsigned long page_end  = page_addr + PAGE_SIZE;
         struct list_head *chunk = pool->free_chunks.next;
