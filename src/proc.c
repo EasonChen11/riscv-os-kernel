@@ -164,22 +164,22 @@ long do_stop(long pid) {
 struct sleep_ctx { int pid; };
 
 static void sleep_wake(void* arg) {
-    struct sleep_ctx* c = (struct sleep_ctx*)arg;
     unsigned long flags = irq_save();
+    struct sleep_ctx* c = (struct sleep_ctx*)arg;
     struct thread* t = find_pid(c->pid);
     /* t == NULL：已被 kill_zombies 收屍從 all_threads 拿掉。
      * t->state != THREAD_WAITING：被 stop 變 ZOMBIE，或別處改了 state。
      * 兩種都不該再標 RUNNING + enqueue（會把 zombie 塞回 run queue → 後續
      * schedule 切過去 load freed memory，scause=7）。 */
-    if (!t || t->state != THREAD_WAITING) {
-        irq_restore(flags);
-        dynalloc_free(c);
-        return;
-    }
+     if (!t || t->state != THREAD_WAITING) {
+         dynalloc_free(c);
+         irq_restore(flags);
+         return;
+        }
     t->state = THREAD_RUNNING;
     enqueue_runqueue(t);
-    irq_restore(flags);
     dynalloc_free(c);
+    irq_restore(flags);
 }
 
 // 前置條件：caller 必須在 SIE=0 環境（目前唯一路徑為 SYS_USLEEP，trap entry
