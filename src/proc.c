@@ -153,21 +153,31 @@ long do_stop(long pid) {
 
 // usleep：把自己標 WAITING、排 timer，到期 callback 把自己塞回 run queue。
 // 比起 busy-wait usleep 更省 CPU；schedule 切走後別人能跑。
-struct sleep_ctx { struct thread* t; };
+//
+// sleep_ctx 存 pid 不存 thread*：thread 可能在 sleep 期間被 stop / kill →
+// kill_zombies free 掉 thread struct。sleep_wake 之後若直接 deref 過期指標
+// 就是 use-after-free（即使有 state guard 也擋不到 dynalloc 把同一塊記憶體
+// 配給新 thread 後 state byte 剛好等於 THREAD_WAITING 的情況）。
+//
+// 改用 pid + find_pid 查 all_threads：alloc_pid 嚴格遞增不重用，kill_zombies
+// 會把 zombie 從 all_threads list_del，因此 find_pid 找不到 → 安全 drop wake。
+struct sleep_ctx { int pid; };
 
 static void sleep_wake(void* arg) {
     struct sleep_ctx* c = (struct sleep_ctx*)arg;
     unsigned long flags = irq_save();
-    /* 若 thread 已被 stop / kill 變 ZOMBIE，不能再標 RUNNING + enqueue：
-     * 那會把已掛 zombie_list 的 thread 同時塞回 run queue，kill_zombies
-     * free 掉 kstack 後 schedule 切過去就 load 到 freed memory（scause=7） */
-    if (c->t->state != THREAD_WAITING) {
+    struct thread* t = find_pid(c->pid);
+    /* t == NULL：已被 kill_zombies 收屍從 all_threads 拿掉。
+     * t->state != THREAD_WAITING：被 stop 變 ZOMBIE，或別處改了 state。
+     * 兩種都不該再標 RUNNING + enqueue（會把 zombie 塞回 run queue → 後續
+     * schedule 切過去 load freed memory，scause=7）。 */
+    if (!t || t->state != THREAD_WAITING) {
         irq_restore(flags);
         dynalloc_free(c);
         return;
     }
-    c->t->state = THREAD_RUNNING;
-    enqueue_runqueue(c->t);
+    t->state = THREAD_RUNNING;
+    enqueue_runqueue(t);
     irq_restore(flags);
     dynalloc_free(c);
 }
@@ -180,14 +190,15 @@ long do_usleep(unsigned int usec) {
     if (usec == 0) return 0;
     struct sleep_ctx* c = (struct sleep_ctx*)dynalloc_alloc(sizeof(*c));
     if (!c) return -1;
-    c->t = kthread_get_current();
+    struct thread* me = kthread_get_current();
+    c->pid = me->pid;
     unsigned long ticks = (unsigned long)usec * (timer_get_freq() / 1000000UL);
     add_timer_ticks(sleep_wake, c, ticks);
 
-    c->t->state = THREAD_WAITING;
-    list_del_init(&c->t->rq_link);
+    me->state = THREAD_WAITING;
+    list_del_init(&me->rq_link);
 
-    schedule();   // 醒來時 sleep_wake 已把 c->t 塞回 run queue
+    schedule();   // 醒來時 sleep_wake 已把 me 塞回 run queue
     return 0;
 }
 
