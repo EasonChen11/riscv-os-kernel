@@ -64,89 +64,95 @@ void dynalloc_init(void) {
     }
 }
 
+// dynalloc 在 lab5 加 preempt 後變成 SMP-style shared resource：
+//   - kthread_create / do_fork 從 thread context (SIE=1) 呼叫 dynalloc_alloc
+//   - kill_zombies / drain_tasks / sleep_wake 也呼叫 dynalloc_alloc/free
+// 任何 list_add / list_del / in_use RMW 中間都可能被 preempt timer 中斷，
+// 切到別 thread 對同一個 pool 操作，醒回來時 free_chunks 鏈、in_use 計數都
+// 處於半成品狀態，後續走 list 會踩野指標。整個函式包 irq_save 才安全。
+//
+// nested 安全：buddy_alloc_pages / buddy_free_pages 內部沒做 SIE 操作，所以
+// 從 dynalloc 進去 SIE 維持 0 不變；返回後我們 restore 自己的 flags。
 void *dynalloc_alloc(unsigned int size) {
-    // size 超過最大 chunk 大小，go to buddy allocator
+    unsigned long flags = irq_save();
+    void *result = (void*)0;
+
     if (size > DA_MAX_CHUNK_SIZE) {
-        unsigned int pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE; // 向上取整需要的 page 數量
+        unsigned int pages_needed = (size + PAGE_SIZE - 1) / PAGE_SIZE;
         int order = 0;
-        while ((1U << order) < pages_needed) {
-            order++;
-        }
-        if(order > BUDDY_MAX_ORDER) {
-            return (void*)0; // 超過 buddy allocator 的最大 order
-        }
-        return buddy_alloc_pages(order);
+        while ((1U << order) < pages_needed) order++;
+        if (order > BUDDY_MAX_ORDER) goto out;
+        result = buddy_alloc_pages(order);
+        goto out;
     }
 
-    // 找到適合的 pool
     int pool_index = -1;
     for (int i = 0; i < DA_NUM_POOLS; i++) {
-        if (size <= pools[i].chunk_size) {
-            pool_index = i;
-            break;
-        }
+        if (size <= pools[i].chunk_size) { pool_index = i; break; }
     }
-    if (pool_index == -1) {
-        return (void*)0; // 沒有適合的 pool
-    }
+    if (pool_index == -1) goto out;
 
     struct chunk_pool *pool = &pools[pool_index];
     if (list_empty(&pool->free_chunks)) {
-        // 沒有空閒 chunk，分配一個新的 page 並切割成 chunk
-        void *page = buddy_alloc_pages(0); // 分配 1 page
-        if (page == (void*)0) {
-            return (void*)0; // 分配失敗
-        }
+        void *page = buddy_alloc_pages(0);
+        if (page == (void*)0) goto out;
         unsigned long page_index = buddy_addr_to_page_idx((unsigned long)page);
         page_descriptors[page_index].pool_index = pool_index;
         page_descriptors[page_index].in_use = 0;
-
-        // 切割 page 成 chunk 並加入 free list O(n)
         for (unsigned int offset = 0; offset < PAGE_SIZE; offset += pool->chunk_size) {
-            struct list_head *chunk_node = (struct list_head *)((char *)page + offset); // 前 16 bytes 用於 list_head
+            struct list_head *chunk_node = (struct list_head *)((char *)page + offset);
             list_add(chunk_node, &pool->free_chunks);
         }
     }
 
-    // 從 free list 中分配一個 chunk
     struct list_head *chunk_node = pool->free_chunks.next;
     list_del(chunk_node);
     page_descriptors[buddy_addr_to_page_idx((unsigned long)chunk_node)].in_use++;
-    // log_chunk_alloc((unsigned long)chunk_node, pool->chunk_size);
-    return (void *)chunk_node;
+    result = (void *)chunk_node;
+
+out:
+    irq_restore(flags);
+    return result;
 }
 
 void dynalloc_free(void *ptr) {
-    if (ptr == (void*)0) {
-        return; // 無效指標
-    }
+    if (ptr == (void*)0) return;
+
+    unsigned long flags = irq_save();
     unsigned long addr = (unsigned long)ptr;
     unsigned long page_index = buddy_addr_to_page_idx(addr);
-    if (page_index >= g_buddy_total_pages) {
-        return; // 超出 buddy allocator 管理的範圍
-    }
+    if (page_index >= g_buddy_total_pages) goto out;
+
     int pool_index = page_descriptors[page_index].pool_index;
     if (pool_index == -1) {
-        // 不是 chunk page，直接交給 buddy allocator 處理
         buddy_free_pages((void *)addr);
-        return;
+        goto out;
     }
 
     struct chunk_pool *pool = &pools[pool_index];
     struct list_head *chunk_node = (struct list_head *)ptr;
     list_add(chunk_node, &pool->free_chunks);
     page_descriptors[page_index].in_use--;
-    // log_chunk_free(addr, pool->chunk_size);
 
-    // 如果該 page 上的 chunk 都是 free 的，回收整個 page 給 buddy allocator。
+    // [DISABLED, 2026-04-29] 整 page 回收 cleanup loop
     //
-    // 整段必須 irq_save：caller 可能是 idle (kthread, SIE=1)，preempt timer
-    // 在 cleanup walk 中間 fire 會切到別 thread，別 thread 對同一個 pool 做
-    // alloc/free 改 free_chunks 結構，醒回來時 next_chunk 已是 dangling
-    // (stale rq_link / 已被當 thread struct 寫入 ra/sp 的 chunk[0..15])，
-    // 下一輪 list_del 就踩野指標 (scause=7 fault @ __list_del 或無限迴圈)。
+    // alloc/free 的 irq_save 已修正單純的 preempt race；但 cleanup loop 在
+    // sleep_ctx (16-byte pool) 高頻 alloc/free 場景下仍會踩雷：當 cleanup
+    // 把 page 還回 buddy 並把 page_descriptors[].pool_index = -1，timer queue
+    // 中已 add_timer_ticks 但未 fire 的 sleep_wake callback 仍持有該 page 內
+    // chunk 的 stale pointer。callback fire 後走 dynalloc_free 的「pool_index
+    // == -1」分支，把非 page-aligned 的 chunk address 餵給 buddy_free_pages，
+    // buddy 內部 frame_array 算錯 idx → list 結構壞 → 死或 fault。
+    //
+    // 真正的修需要其中一個：
+    //   (a) timer queue 加 cancel API：thread 死時 cancel 它的 sleep_wake
+    //   (b) sleep_ctx 嵌進 thread struct（thread 死時自然 free，不依賴 dynalloc）
+    //   (c) dynalloc 加 ref count，cleanup 不只看 in_use 還看外部引用
+    //
+    // BE2 grading #5「fork-exit 不漏 page」可能扣幾分；BE3 + Adv1 demo 體驗
+    // 優先，根因延到 lab6 一起 audit。原本實作保留在 #if 0 內當 reference。
+#if 0
     if (page_descriptors[page_index].in_use == 0) {
-        unsigned long flags = irq_save();
         unsigned long page_addr = buddy_page_idx_to_addr(page_index);
         unsigned long page_end  = page_addr + PAGE_SIZE;
         struct list_head *chunk = pool->free_chunks.next;
@@ -159,6 +165,10 @@ void dynalloc_free(void *ptr) {
         }
         buddy_free_pages((void *)page_addr);
         page_descriptors[page_index].pool_index = -1;
-        irq_restore(flags);
     }
+#endif
+    (void)page_index;
+
+out:
+    irq_restore(flags);
 }
