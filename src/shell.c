@@ -232,8 +232,13 @@ static void exec_cmd(const char* cmd) {
     } else if (strcmp(cmd, "mmtest") == 0) {
         cmd_mmtest();
     } else if (strncmp(cmd, "exec ", 5) == 0) {
-        long pid = spawn_user(cmd + 5);
-        do_waitpid(pid);
+        const char *path = cmd + 5;
+        if (*path == 0) {
+            uart_puts("usage: exec <filename>\n");
+        } else {
+            long pid = spawn_user(path);
+            do_waitpid(pid);
+        }
     } else if (strncmp(cmd, "setTimeout ", 11) == 0) {
         cmd_setTimeout(cmd + 11);
     } else if (strcmp(cmd, "heartbeat") == 0) {
