@@ -210,6 +210,6 @@ void timer_init(void) {
         pool[i].in_use = 0;
 
     asm volatile("csrrs zero, sie, %0" :: "r"(1UL << 5));   // sie.STIE 開啟
-    add_task(heartbeat_cb, 0, PRIO_LOW);   // 用標準排程進入 queue                                                         
+    // add_task(heartbeat_cb, 0, PRIO_LOW);   // 用標準排程進入 queue                                                         
     drain_tasks();                          // 立刻吐（init 是 thread context，drain 可重入）
 }
