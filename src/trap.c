@@ -5,6 +5,7 @@
 #include "task.h"
 #include "syscall.h"
 #include "schedule.h"
+#include "thread.h"
 
 // sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
 void trap_init(void) {
@@ -38,8 +39,15 @@ void do_trap(struct trap_frame *regs) {
             regs->sepc += 4;
             do_syscall(regs);
         } else {
+            struct thread *cur = kthread_get_current();
             uart_puts("Unknown exception: scause=");
             uart_int(regs->scause);
+            uart_puts(" sepc=0x");
+            uart_hex(regs->sepc);
+            uart_puts(" stval=0x");
+            uart_hex(regs->stval);
+            uart_puts(" pid=");
+            uart_int(cur ? cur->pid : -1);
             uart_putc('\n');
         }
     }
