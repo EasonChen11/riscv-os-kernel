@@ -172,6 +172,10 @@ static void sleep_wake(void* arg) {
     dynalloc_free(c);
 }
 
+// 前置條件：caller 必須在 SIE=0 環境（目前唯一路徑為 SYS_USLEEP，trap entry
+// 已自動清 SIE）。下面 state + list_del 兩行不再 irq_save，依賴此 invariant。
+// 若未來新增 kthread 直接呼叫 do_usleep 的路徑，記得補回 irq_save 或在 caller
+// 側自行關 SIE，否則 preempt timer 在 RMW 中間 fire 會壞 list。
 long do_usleep(unsigned int usec) {
     if (usec == 0) return 0;
     struct sleep_ctx* c = (struct sleep_ctx*)dynalloc_alloc(sizeof(*c));
@@ -180,10 +184,8 @@ long do_usleep(unsigned int usec) {
     unsigned long ticks = (unsigned long)usec * (timer_get_freq() / 1000000UL);
     add_timer_ticks(sleep_wake, c, ticks);
 
-    unsigned long flags = irq_save();
     c->t->state = THREAD_WAITING;
     list_del_init(&c->t->rq_link);
-    irq_restore(flags);
 
     schedule();   // 醒來時 sleep_wake 已把 c->t 塞回 run queue
     return 0;
