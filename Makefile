@@ -64,7 +64,7 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 run: CFLAGS += -DQEMU
 run: LDSCRIPT = qemu.ld
 run: build
-	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd initramfs.cpio -display none -serial stdio -device ramfb
+	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd initramfs.cpio -vnc :0 -serial stdio -device ramfb
 	# stdio 接 UART：手動 type 應該 char-by-char 進 shell；
 	# 如果 host terminal 在 cooked mode 沒看到 echo，按 Enter 仍會送整行進 QEMU。
 	# pipe 測試（stdin 來自 echo/printf）建議 (sleep 2; printf "...") | make run，
