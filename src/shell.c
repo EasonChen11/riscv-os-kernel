@@ -35,7 +35,6 @@ static void cmd_help(void) {
     uart_puts("  heartbeat  - toggle heartbeat output (boot time print) on/off.\n");
     uart_puts("  demo       - run lab4_demo() (paste Adv2 test code in src/shell.c).\n");
     uart_puts("  vidtest    - draw a 256x256 RGB gradient via video_bmp_display.\n");
-    uart_puts("  sleeptest  - sleep 1 second via do_usleep, then return to prompt.\n");
 }
 
 // vidtest：在 framebuffer 中央畫一張 256x256 漸層方塊
@@ -53,14 +52,6 @@ static void cmd_vidtest(void) {
     }
     video_bmp_display(tile, 256, 256);
     uart_puts("vidtest: 256x256 gradient drawn at framebuffer center\n");
-}
-
-// sleeptest：示範 do_usleep 把 thread 標 WAITING 1 秒、被 timer callback 喚回。
-// 期間 shell thread 不在 run queue，CPU 完全給其他 thread。
-static void cmd_sleeptest(void) {
-    uart_puts("sleeptest: sleeping 1 sec...\n");
-    do_usleep(1000000);   // 1 sec = 1,000,000 usec
-    uart_puts("sleeptest: woke up\n");
 }
 
 // demo helper：基本 cb，只印 enter/exit。
@@ -252,8 +243,6 @@ static void exec_cmd(const char* cmd) {
         lab4_demo();
     } else if (strcmp(cmd, "vidtest") == 0) {
         cmd_vidtest();
-    } else if (strcmp(cmd, "sleeptest") == 0) {
-        cmd_sleeptest();
     } else {
         cmd_unknown(cmd);
     }
