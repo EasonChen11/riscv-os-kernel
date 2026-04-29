@@ -14,8 +14,8 @@ void display(unsigned int* bmp, unsigned int w, unsigned int h);
 int  usleep(unsigned int usec);
 
 /* mini libc — impl in lib.c */
-void puts_(const char* s);             /* 不送 \n（避免跟 stdlib puts 簽名衝突） */
-void putc_(char c);
+void puts(const char* s);              /* 印字串 + '\n'，行為對齊 stdlib */
+void putchar(char c);
 int  strcmp(const char* a, const char* b);
 int  strncmp(const char* a, const char* b, int n);
 int  atoi(const char* s);
