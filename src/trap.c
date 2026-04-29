@@ -46,6 +46,8 @@ void do_trap(struct trap_frame *regs) {
             uart_hex(regs->sepc);
             uart_puts(" stval=0x");
             uart_hex(regs->stval);
+            uart_puts(" ra=0x");
+            uart_hex(regs->ra);
             uart_puts(" pid=");
             uart_int(cur ? cur->pid : -1);
             uart_putc('\n');
