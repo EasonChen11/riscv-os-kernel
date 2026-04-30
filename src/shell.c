@@ -183,6 +183,13 @@ static void exec_cmd(const char* cmd) {
 }
 
 void shell_thread(void) {
+    // kernel thread 第一次跑是 switch_to ret 進來、CSR.sstatus 不變，
+    // 而源頭 idle 的 schedule 內 irq_save 已把 SIE 清成 0 → shell 啟動時
+    // SIE=0，timer ISR 永遠進不來、shell 永遠不會被 preempt。
+    // polling 模式 uart_getc 是 tight spin、不會主動 yield，所以這個 SIE=0
+    // 狀態會一路傳下去。顯式把 SIE 設回 1。
+    // （interrupt 模式靠 uart_getc 內 csrsi 順便修掉這條雷。）
+    asm volatile("csrsi sstatus, 2");
     shell_init();
     while (1) {
         shell();
