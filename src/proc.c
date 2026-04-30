@@ -48,6 +48,17 @@ long do_fork(struct trap_frame *parent_tf) {
     init_list_head(&c->child_link);
     init_list_head(&c->children);
 
+    /* signal_handlers[] 故意保留繼承（lab5.rst spec：fork 後 child 沿用 parent
+     * 已註冊的 handler）。但 per-delivery 暫存欄位必須清掉：parent 若正在跑
+     * signal handler 中途 fork（理論上 user 不會這樣寫，但防呆），淺拷貝會
+     * 把 signal_handling=true / signal_stack=parent 的 stack ptr 帶過去；
+     * 之後 child 第一次中斷會被誤判成「正在 handle」而跳過 deliver，且
+     * sigreturn 時去 free parent 的 signal_stack 造成 double free。
+     * 直接歸零，child 視為「未在處理任何 signal」。 */
+    c->signal_pending  = 0;
+    c->signal_handling = false;
+    c->signal_stack    = (void *)0;
+
     // 1. kstack 整塊複製（含 parent 留下的 trap_frame 副本）
     c->kstack = buddy_alloc_pages(0);
     memcpy(c->kstack, p->kstack, KSTACK_SIZE);
