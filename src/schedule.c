@@ -29,7 +29,14 @@ void enqueue_zombie(struct thread* t) {
 }
 
 // 由 idle 呼叫；thread 不能 free 自己（kstack 還在用），必須切走後由別人代清
+//
+// irq_save：idle 跑 kill_zombies 時 SIE=1，timer ISR 可進來、drain_tasks 跑
+// sleep_wake → find_pid 走 all_threads。kill_zombies 拆 z 出 all_threads 是
+// 兩步 RMW（z->prev->next、z->next->prev），中間被打斷且 z 立刻被新 thread
+// 重用、init_list_head 把 next/prev 指回自己，find_pid 接著走 p=p->next 會
+// 卡死自指 list 無窮迴圈。整段 irq_save 把 list 拆 + dynalloc_free 包成 atomic。
 void kill_zombies(void) {
+    unsigned long flags = irq_save();
     while (!list_empty(&zombie_list)) {
         struct thread* z = list_entry(zombie_list.next, struct thread, rq_link);
         list_del(&z->rq_link);
@@ -41,6 +48,7 @@ void kill_zombies(void) {
         if (z->ustack) buddy_free_pages(z->ustack);
         dynalloc_free(z);
     }
+    irq_restore(flags);
 }
 
 void schedule(void) {
