@@ -154,31 +154,25 @@ long do_stop(long pid) {
 // usleep：把自己標 WAITING、排 timer，到期 callback 把自己塞回 run queue。
 // 比起 busy-wait usleep 更省 CPU；schedule 切走後別人能跑。
 //
-// sleep_ctx 存 pid 不存 thread*：thread 可能在 sleep 期間被 stop / kill →
-// kill_zombies free 掉 thread struct。sleep_wake 之後若直接 deref 過期指標
-// 就是 use-after-free（即使有 state guard 也擋不到 dynalloc 把同一塊記憶體
-// 配給新 thread 後 state byte 剛好等於 THREAD_WAITING 的情況）。
-//
-// 改用 pid + find_pid 查 all_threads：alloc_pid 嚴格遞增不重用，kill_zombies
-// 會把 zombie 從 all_threads list_del，因此 find_pid 找不到 → 安全 drop wake。
-struct sleep_ctx { int pid; };
-
+// 喚醒 handle 直接用 pid 整數塞進 timer arg，callback 不再 deref 任何指標。
+// 理由：thread struct 由 dynalloc 配置，timer queue 內若仍以 pointer 形式
+// 持有 thread 內部欄位（之前的 &me->sleep_ctx 設計），thread 被 stop+free
+// 並 chunk 被新 thread 接走後，stale pointer 會落在新 thread 的合法欄位上，
+// find_pid 取到的是新 thread 的 pid → 假喚醒。改用 pid 整數後，alloc_pid
+// 嚴格遞增不重用，find_pid 找不到舊 pid 就直接 drop，避免整類 race。
 static void sleep_wake(void* arg) {
     unsigned long flags = irq_save();
-    struct sleep_ctx* c = (struct sleep_ctx*)arg;
-    struct thread* t = find_pid(c->pid);
-    /* t == NULL：已被 kill_zombies 收屍從 all_threads 拿掉。
-     * t->state != THREAD_WAITING：被 stop 變 ZOMBIE，或別處改了 state。
-     * 兩種都不該再標 RUNNING + enqueue（會把 zombie 塞回 run queue → 後續
-     * schedule 切過去 load freed memory，scause=7）。 */
-     if (!t || t->state != THREAD_WAITING) {
-         dynalloc_free(c);
-         irq_restore(flags);
-         return;
-        }
+    int pid = (int)(unsigned long)arg;
+    struct thread* t = find_pid(pid);
+    /* t == NULL：thread 已 zombie 或被 kill_zombies 從 all_threads 拿掉。
+     * t->state != THREAD_WAITING：被 stop 變 ZOMBIE，或被別人提前喚醒。
+     * 兩種都不該再標 RUNNING + enqueue。 */
+    if (!t || t->state != THREAD_WAITING) {
+        irq_restore(flags);
+        return;
+    }
     t->state = THREAD_RUNNING;
     enqueue_runqueue(t);
-    dynalloc_free(c);
     irq_restore(flags);
 }
 
@@ -188,12 +182,9 @@ static void sleep_wake(void* arg) {
 // 側自行關 SIE，否則 preempt timer 在 RMW 中間 fire 會壞 list。
 long do_usleep(unsigned int usec) {
     if (usec == 0) return 0;
-    struct sleep_ctx* c = (struct sleep_ctx*)dynalloc_alloc(sizeof(*c));
-    if (!c) return -1;
     struct thread* me = kthread_get_current();
-    c->pid = me->pid;
     unsigned long ticks = (unsigned long)usec * (timer_get_freq() / 1000000UL);
-    add_timer_ticks(sleep_wake, c, ticks);
+    add_timer_ticks(sleep_wake, (void*)(unsigned long)me->pid, ticks);
 
     me->state = THREAD_WAITING;
     list_del_init(&me->rq_link);
