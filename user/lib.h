@@ -12,6 +12,8 @@ void exit(int status) __attribute__((noreturn));
 int  stop(long pid);
 void display(unsigned int* bmp, unsigned int w, unsigned int h);
 int  usleep(unsigned int usec);
+long signal(int signum, void (*handler)(void));   // 註冊 user-mode handler；handler==0 表示恢復 default
+long kill(int pid, int signum);                   // 發 signal 給目標 pid
 
 /* mini libc — impl in lib.c */
 void puts(const char* s);              /* 印字串 + '\n'，行為對齊 stdlib */

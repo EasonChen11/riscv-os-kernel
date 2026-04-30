@@ -22,6 +22,9 @@ enum {
     SYS_STOP       = 7,
     SYS_DISPLAY    = 8,    // a0=BMP*, a1=width, a2=height
     SYS_USLEEP     = 9,    // a0=microseconds；wake-up driven by add_timer_ticks
+    SYS_SIGNAL     = 10,   // a0=signum, a1=handler；註冊 user-mode handler
+    SYS_SIGRETURN  = 11,   // 從 user handler 回核心、恢復原 trap_frame、回收 signal stack
+    SYS_KILL       = 12,   // a0=pid, a1=signum
     NR_SYSCALL,
 };
 

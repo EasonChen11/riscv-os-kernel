@@ -38,8 +38,11 @@ struct thread {
     struct list_head    all_link;    // 接到 all_threads（find_pid 掃這條）
     // signal handler
     unsigned int signal_pending;            // bit i: signal i pending
-    unsigned long signal_handlers[NSIG]; // 0=default, others=handler addr
-
+    unsigned long signal_handlers[NSIG];    // 0=default，其他=user handler 入口 addr
+    // signal delivery 期間用的暫存：deliver_signal 配 stack + 存 tf，sigreturn 還原並 free
+    struct trap_frame   signal_saved_tf;    // 跳 user handler 前完整存一份原 tf；sigreturn 整盤覆寫回去
+    void               *signal_stack;       // signal handler 專用一頁 user stack；sigreturn 釋放
+    bool                signal_handling;    // 防 nested delivery（lab spec 不要求 nested）
 };
 
 // 全 thread 索引；fork/waitpid/stop 透過它找 pid 對應的 thread

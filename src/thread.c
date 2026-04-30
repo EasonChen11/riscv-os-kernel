@@ -34,6 +34,8 @@ struct thread* kthread_create(thread_func_t fn) {
     // signal handler 預設都指向 0（default handler）
     t->signal_pending = 0;
     for (int i = 0; i < NSIG; i++) t->signal_handlers[i] = 0;
+    t->signal_handling = false;
+    t->signal_stack    = (void *)0;
     enqueue_runqueue(t);
     return t;
 }

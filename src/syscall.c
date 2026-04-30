@@ -4,6 +4,7 @@
 #include "exec.h"
 #include "proc.h"
 #include "video.h"
+#include "signal.h"
 
 // SYS_GETPID：回傳當前 thread 的 pid（kthread_create 已分配遞增 id）
 static long sys_getpid(struct trap_frame *tf) {
@@ -66,6 +67,16 @@ static long sys_usleep(struct trap_frame *tf) {
     return do_usleep((unsigned int)tf->a0);
 }
 
+// SYS_SIGNAL：註冊 user handler；POSIX 規格回前一個 handler，本 lab 簡化為回 0
+static long sys_signal(struct trap_frame *tf) {
+    return do_signal((int)tf->a0, (unsigned long)tf->a1);
+}
+
+// SYS_KILL：對 pid 設 signal pending bit；目標下次 trap exit 時才 deliver
+static long sys_kill(struct trap_frame *tf) {
+    return do_kill((int)tf->a0, (int)tf->a1);
+}
+
 // switch dispatcher：避免 function pointer table 在 .rodata 留絕對位址，
 // kernel self-relocation 後 table entry 仍指向 link 時舊位置
 void do_syscall(struct trap_frame *tf) {
@@ -82,6 +93,11 @@ void do_syscall(struct trap_frame *tf) {
         case SYS_STOP:       ret = sys_stop(tf);       break;
         case SYS_DISPLAY:    ret = sys_display(tf);    break;
         case SYS_USLEEP:     ret = sys_usleep(tf);     break;
+        case SYS_SIGNAL:     ret = sys_signal(tf);     break;
+        case SYS_KILL:       ret = sys_kill(tf);       break;
+        // SYS_SIGRETURN 特殊：do_sigreturn 已把整個 *tf 覆寫成 saved_tf
+        // （含 a0），這裡若再 tf->a0 = ret 會把復原的 a0 蓋掉，所以 return 早退
+        case SYS_SIGRETURN:  do_sigreturn(tf);         return;
         default:             ret = -1;                 break;
     }
     tf->a0 = (uint64_t)ret;

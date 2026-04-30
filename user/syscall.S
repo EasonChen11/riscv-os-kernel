@@ -63,3 +63,15 @@ usleep:
     li   a7, 9
     ecall
     ret
+
+.globl signal
+signal:
+    li   a7, 10
+    ecall
+    ret
+
+.globl kill
+kill:
+    li   a7, 12
+    ecall
+    ret
