@@ -134,26 +134,15 @@ void dynalloc_free(void *ptr) {
     list_add(chunk_node, &pool->free_chunks);
     page_descriptors[page_index].in_use--;
 
-    // [DISABLED, 2026-04-29] 整 page 回收 cleanup loop
+    // 整 page 回收 cleanup loop（2026-04-30 重啟）
     //
-    // alloc/free 的 irq_save 已修正單純的 preempt race；但 cleanup loop 在
-    // sleep_ctx (16-byte pool) 高頻 alloc/free 場景下仍會踩雷：當 cleanup
-    // 把 page 還回 buddy 並把 page_descriptors[].pool_index = -1，timer queue
-    // 中已 add_timer_ticks 但未 fire 的 sleep_wake callback 仍持有該 page 內
-    // chunk 的 stale pointer。callback fire 後走 dynalloc_free 的「pool_index
-    // == -1」分支，把非 page-aligned 的 chunk address 餵給 buddy_free_pages，
-    // buddy 內部 frame_array 算錯 idx → list 結構壞 → 死或 fault。
-    //
-    // 真正的修需要其中一個：
-    //   (a) timer queue 加 cancel API：thread 死時 cancel 它的 sleep_wake
-    //   (b) sleep_ctx 嵌進 thread struct（thread 死時自然 free，不依賴 dynalloc）
-    //   (c) dynalloc 加 ref count，cleanup 不只看 in_use 還看外部引用
-    //
-    // BE2 grading #5「fork-exit 不漏 page」可能扣幾分；BE3 + Adv1 demo 體驗
-    // 優先，根因延到 lab6 一起 audit。原本實作保留在 #if 0 內當 reference。
-#if 0
-    // 保留註解
-    if (page_descriptors[page_index].in_use == 0) { 
+    // 前一版因 sleep_ctx 從 16-byte pool dynalloc、timer queue 持有 stale
+    // chunk pointer 而 disabled。本版 sleep_wake 改用 pid 整數作 wake handle
+    // （proc.c），timer queue 不再持有任何 dynalloc chunk pointer，cleanup
+    // 把 page 還 buddy 對 sleep 路徑完全安全。其他 dynalloc 用戶（task slot、
+    // thread struct）皆 short-lived，free 即代表外部不再引用，cleanup 同樣
+    // 安全。
+    if (page_descriptors[page_index].in_use == 0) {
         unsigned long page_addr = buddy_page_idx_to_addr(page_index);
         unsigned long page_end  = page_addr + PAGE_SIZE;
         struct list_head *chunk = pool->free_chunks.next;
@@ -167,8 +156,6 @@ void dynalloc_free(void *ptr) {
         buddy_free_pages((void *)page_addr);
         page_descriptors[page_index].pool_index = -1;
     }
-#endif
-    (void)page_index;
 
 out:
     irq_restore(flags);
