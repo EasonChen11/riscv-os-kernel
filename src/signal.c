@@ -45,9 +45,11 @@ void deliver_signal(struct trap_frame *tf) {
 
         // user handler path：
         // 1. 完整存 tf 一份，sigreturn 整盤覆寫回去（包含 sepc/sstatus）
-        // 2. 配一頁 user stack；trampoline 8 byte 放在 stack 上端、16-byte align
+        // 2. 配一頁 user stack；trampoline 機器碼（編譯後 6 byte，含 RVC c.li）
+        //    放在 stack 上端、16-byte align
         // 3. 改 tf：sepc=handler、sp=trampoline、ra=trampoline
         //    handler 跑完 ret 進 trampoline → ecall 觸發 SYS_SIGRETURN
+        //    sp == ra 同位址不撞：sp 是「下次 push 目標」、ra 是「ret 的 PC」
         me->signal_handling   = true;
         me->signal_saved_tf   = *tf;
         me->signal_stack      = buddy_alloc_pages(0);
@@ -69,6 +71,8 @@ void deliver_signal(struct trap_frame *tf) {
 
 // SYS_SIGNAL：註冊 user handler；signum 0 表示恢復 default。
 // handler 已是 user image 內的 PC-relative 位址（user binary 是 PIE）。
+// 寫進來的值 deliver_signal 會直接放進 tf->sepc 當 PC，亂寫垃圾位址 = user
+// 自己 instruction fault loop（kernel 不檢查）。永遠寫自己（無 pid 參數）。
 long do_signal(int signum, unsigned long handler) {
     if (signum < 0 || signum >= NSIG) return -1;
     struct thread *me = kthread_get_current();
