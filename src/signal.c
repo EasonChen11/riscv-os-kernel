@@ -1,55 +1,35 @@
 #include "signal.h"
 #include "thread.h"
-#include "proc.h"     // do_exit / find_pid
+#include "proc.h"
 #include "uart.h"
-#include "buddy.h"    // signal stack 配/釋放走 buddy（一頁就夠）
-#include "string.h"   // memcpy 拷 trampoline
+#include "buddy.h"
+#include "string.h"
 
-// trampoline 機器碼定義在 src/trampoline.S（.rodata 內 li a7,11 + ecall），
-// 兩個 label 標起訖；deliver_signal 把這段 byte 複製進 user signal stack 頂端，
-// 設 user ra=trampoline 後 handler 結束 ret 進去，下一條 ecall 觸發 SYS_SIGRETURN
-// 把 trap_frame 復原 + 釋放 signal stack。
 extern const char sigreturn_trampoline[];
 extern const char sigreturn_trampoline_end[];
 
-// 由 do_trap 在 trap exit 前呼叫；user thread 才會走完整路徑。
-//
-// (!me) 的早退守衛是必要的：do_trap 在 boot 早期 trap 路徑可能進來
-// （例如 IRQ-mode UART 開啟後 RX 殘留 byte 觸發 trap），此時 tp 還沒
-// 被 kthread_bootstrap_idle 設過、是 0 / 垃圾值。若沒這個 guard，後續
-// me->signal_pending 會去 deref address 0+offset 引發 load fault →
-// nested trap → infinite trap loop。
+// trap exit 前處理 pending signal；改 tf 讓 user 醒來跑 handler。
+// !me 守衛擋 boot 早期 tp 未初始化時 trap 進來的 deref。
 void deliver_signal(struct trap_frame *tf) {
     struct thread *me = kthread_get_current();
     if (!me) return;
     if (me->is_kernel) return;
     if (me->signal_pending == 0) return;
-    if (me->signal_handling) return;   // 正在跑 user handler，不要 nested
+    if (me->signal_handling) return;       // nested 防護
 
-    // 一次只 deliver 一個 signal：找最低 set bit、清掉 pending、處理。
-    // 其他還沒處理的 pending bit 留到下次 trap exit 再進來。
     for (int s = 0; s < NSIG; s++) {
         if (!(me->signal_pending & (1u << s))) continue;
         me->signal_pending &= ~(1u << s);
 
         unsigned long h = me->signal_handlers[s];
         if (h == 0) {
-            // default action：lab spec 只規定 SIGTERM 預設要 terminate；
-            // 其他 signal 在這個 lab 不測，silently consume。
             if (s == SIGTERM) {
                 uart_puts("[signal] default SIGTERM -> do_exit\n");
-                do_exit(0);     // not return
+                do_exit(0);
             }
             return;
         }
 
-        // user handler path：
-        // 1. 完整存 tf 一份，sigreturn 整盤覆寫回去（包含 sepc/sstatus）
-        // 2. 配一頁 user stack；trampoline 機器碼（編譯後 6 byte，含 RVC c.li）
-        //    放在 stack 上端、16-byte align
-        // 3. 改 tf：sepc=handler、sp=trampoline、ra=trampoline
-        //    handler 跑完 ret 進 trampoline → ecall 觸發 SYS_SIGRETURN
-        //    sp == ra 同位址不撞：sp 是「下次 push 目標」、ra 是「ret 的 PC」
         me->signal_handling   = true;
         me->signal_saved_tf   = *tf;
         me->signal_stack      = buddy_alloc_pages(0);
@@ -58,8 +38,7 @@ void deliver_signal(struct trap_frame *tf) {
         unsigned long top   = (unsigned long)me->signal_stack + PAGE_SIZE;
         unsigned long tramp = (top - tramp_size) & ~0xfUL;
         memcpy((void *)tramp, sigreturn_trampoline, tramp_size);
-        // 寫完指令必須 fence.i：CPU I-cache 可能還是舊內容（這頁是新配的），
-        // sret 進 user 後 fetch trampoline byte 可能撈到 stale cache line。
+        // 新配的頁，I-cache 可能撈到 stale line
         asm volatile("fence.i" ::: "memory");
 
         tf->sepc = h;
@@ -69,32 +48,23 @@ void deliver_signal(struct trap_frame *tf) {
     }
 }
 
-// SYS_SIGNAL：註冊 user handler；signum 0 表示恢復 default。
-// handler 已是 user image 內的 PC-relative 位址（user binary 是 PIE）。
-// 寫進來的值 deliver_signal 會直接放進 tf->sepc 當 PC，亂寫垃圾位址 = user
-// 自己 instruction fault loop（kernel 不檢查）。永遠寫自己（無 pid 參數）。
 long do_signal(int signum, unsigned long handler) {
     if (signum < 0 || signum >= NSIG) return -1;
-    struct thread *me = kthread_get_current();
-    me->signal_handlers[signum] = handler;
+    kthread_get_current()->signal_handlers[signum] = handler;
     return 0;
 }
 
-// SYS_KILL：對 pid 標 signal pending；下一次該 thread trap exit 時 deliver。
-// 不真正切走目前 thread；目標即使在 WAITING 也只是設 bit，等它自己醒來才處理。
 long do_kill(int pid, int signum) {
     if (signum < 0 || signum >= NSIG) return -1;
-    if (pid <= 0) return -1;            // 0 是 idle，禁止
+    if (pid <= 0) return -1;
     struct thread *t = find_pid(pid);
     if (!t) return -1;
-    if (t->is_kernel) return -1;        // 擋 idle / kernel-side shell
+    if (t->is_kernel) return -1;
     t->signal_pending |= (1u << signum);
     return 0;
 }
 
-// SYS_SIGRETURN：trampoline 觸發；把 trap_frame 復原成 deliver_signal 當下的快照。
-// caller (syscall.c dispatcher) 不應再寫 tf->a0 = ret，因為 *tf 已被整盤覆寫
-// （a0 當然包括），需要在 dispatcher 用 return 跳過 a0 寫回。
+// dispatcher 必須在 *tf 整盤覆寫後 return，避免 a0 被覆蓋
 void do_sigreturn(struct trap_frame *tf) {
     struct thread *me = kthread_get_current();
     if (!me || !me->signal_handling) return;

@@ -48,13 +48,7 @@ long do_fork(struct trap_frame *parent_tf) {
     init_list_head(&c->child_link);
     init_list_head(&c->children);
 
-    /* signal_handlers[] 故意保留繼承（lab5.rst spec：fork 後 child 沿用 parent
-     * 已註冊的 handler）。但 per-delivery 暫存欄位必須清掉：parent 若正在跑
-     * signal handler 中途 fork（理論上 user 不會這樣寫，但防呆），淺拷貝會
-     * 把 signal_handling=true / signal_stack=parent 的 stack ptr 帶過去；
-     * 之後 child 第一次中斷會被誤判成「正在 handle」而跳過 deliver，且
-     * sigreturn 時去 free parent 的 signal_stack 造成 double free。
-     * 直接歸零，child 視為「未在處理任何 signal」。 */
+    // signal_handlers[] 故意繼承（lab spec）；per-delivery state 清掉避免 double-free
     c->signal_pending  = 0;
     c->signal_handling = false;
     c->signal_stack    = (void *)0;
@@ -162,22 +156,12 @@ long do_stop(long pid) {
     return 0;
 }
 
-// usleep：把自己標 WAITING、排 timer，到期 callback 把自己塞回 run queue。
-// 比起 busy-wait usleep 更省 CPU；schedule 切走後別人能跑。
-//
-// 喚醒 handle 直接用 pid 整數塞進 timer arg，callback 不再 deref 任何指標。
-// 理由：thread struct 由 dynalloc 配置，timer queue 內若仍以 pointer 形式
-// 持有 thread 內部欄位（之前的 &me->sleep_ctx 設計），thread 被 stop+free
-// 並 chunk 被新 thread 接走後，stale pointer 會落在新 thread 的合法欄位上，
-// find_pid 取到的是新 thread 的 pid → 假喚醒。改用 pid 整數後，alloc_pid
-// 嚴格遞增不重用，find_pid 找不到舊 pid 就直接 drop，避免整類 race。
+// 用 pid 而非 thread* 當 timer arg：alloc_pid 嚴格遞增不重用，
+// thread 被 stop+free 後 find_pid 找不到舊 pid，避免 stale pointer 假喚醒
 static void sleep_wake(void* arg) {
     unsigned long flags = irq_save();
     int pid = (int)(unsigned long)arg;
     struct thread* t = find_pid(pid);
-    /* t == NULL：thread 已 zombie 或被 kill_zombies 從 all_threads 拿掉。
-     * t->state != THREAD_WAITING：被 stop 變 ZOMBIE，或被別人提前喚醒。
-     * 兩種都不該再標 RUNNING + enqueue。 */
     if (!t || t->state != THREAD_WAITING) {
         irq_restore(flags);
         return;
@@ -187,10 +171,7 @@ static void sleep_wake(void* arg) {
     irq_restore(flags);
 }
 
-// 前置條件：caller 必須在 SIE=0 環境（目前唯一路徑為 SYS_USLEEP，trap entry
-// 已自動清 SIE）。下面 state + list_del 兩行不再 irq_save，依賴此 invariant。
-// 若未來新增 kthread 直接呼叫 do_usleep 的路徑，記得補回 irq_save 或在 caller
-// 側自行關 SIE，否則 preempt timer 在 RMW 中間 fire 會壞 list。
+// 前置條件：caller SIE=0（SYS_USLEEP 由 trap entry 保證）；其他路徑要自己關 SIE
 long do_usleep(unsigned int usec) {
     if (usec == 0) return 0;
     struct thread* me = kthread_get_current();

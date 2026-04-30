@@ -1,8 +1,3 @@
-/* osctest user shell — 對齊 lab5.rst 規格的最小 shell
- *
- * 已支援：help / pid / exit / fork_test / exec / fork / stop / signal / kill
- */
-
 #include "lib.h"
 
 #define SIGTERM 15
@@ -23,8 +18,7 @@ static void cmd_pid(void) {
     printf("pid = %d\n", getpid());
 }
 
-/* exec [prog]：fork 出 child 去 exec，shell 自己 waitpid 等 child 結束。
- * 直接呼叫 exec 會把 shell 換成 prog 回不來，所以要包 fork+exec+waitpid。 */
+// 直接 exec 會把 shell 換成 prog 回不來，要 fork+exec+waitpid
 static void cmd_exec(const char* arg) {
     if (*arg == 0) { puts("usage: exec <prog>"); return; }
     long pid = fork();
@@ -39,14 +33,12 @@ static void cmd_exec(const char* arg) {
     }
 }
 
-/* fork：fork 出 child 進 idle，shell 不 wait 直接回 prompt。
- * 給 lab5.rst Adv1 signal demo 用：signal → fork → kill <child_pid>。 */
+// signal demo target：fork 出 idle child，shell 不 wait
 static void cmd_fork(void) {
     long pid = fork();
     if (pid == 0) {
         printf("child: pid = %d, waiting for signal...\n", getpid());
         while (1) usleep(100000);
-        // unreachable
     } else if (pid > 0) {
         printf("parent: child pid = %d\n", pid);
     } else {
@@ -62,17 +54,11 @@ static void cmd_stop(const char* arg) {
     }
 }
 
-/* lab5 Adv1 demo handler：在 user mode 跑、不可呼 stdlib syscall 之外的東西。
- * uart_write 是合法 syscall，但 printf 走的也是它，可以放心用。
- * 跑完 ret 進 trampoline → SYS_SIGRETURN 回到原本 usleep 中斷點。 */
 static void sig_handler(void) {
     puts("signal handler!");
 }
 
-/* signal：對當前 process 註冊 SIGTERM handler。
- * 規格規定只有「之後 fork 出來的 child」會繼承（do_fork 用 *c = *p 淺拷貝
- * signal_handlers），現在 fork 出去的 child 都帶這份 handler，被 kill 不會死、
- * 而是跑 sig_handler。 */
+// 之後 fork 出來的 child 才繼承這個 handler（spec）
 static void cmd_signal(void) {
     if (signal(SIGTERM, sig_handler) < 0) {
         puts("signal failed");

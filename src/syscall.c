@@ -6,14 +6,11 @@
 #include "video.h"
 #include "signal.h"
 
-// SYS_GETPID：回傳當前 thread 的 pid（kthread_create 已分配遞增 id）
 static long sys_getpid(struct trap_frame *tf) {
     (void)tf;
     return kthread_get_current()->pid;
 }
 
-// SYS_UART_READ：阻塞讀 a1 bytes 到 a0；user-supplied buffer 直接寫
-// 沒 MMU、所有位址 kernel 直接可達；之後若加 ring buffer 再換實作
 static long sys_uart_read(struct trap_frame *tf) {
     char *buf = (char *)tf->a0;
     long  n   = (long) tf->a1;
@@ -21,7 +18,6 @@ static long sys_uart_read(struct trap_frame *tf) {
     return n;
 }
 
-// SYS_UART_WRITE：把 a1 bytes 從 a0 推到 UART；polling/IRQ 共用 uart_putc
 static long sys_uart_write(struct trap_frame *tf) {
     const char *buf = (const char *)tf->a0;
     long        n   = (long)        tf->a1;
@@ -29,56 +25,47 @@ static long sys_uart_write(struct trap_frame *tf) {
     return n;
 }
 
-// SYS_EXEC：把當前 U-mode process 換成 path 指定的 image
-// 成功不回（trap exit 直接 sret 到新 entry），失敗回 -1
+// 成功不返回（直接 sret 到新 entry），失敗回 -1
 static long sys_exec(struct trap_frame *tf) {
     return do_exec((const char *)tf->a0, tf);
 }
 
-// SYS_FORK：parent 拿 child pid，child 第一次跑時看到 a0=0
+// parent 拿 child pid，child 第一次跑時看到 a0 = 0
 static long sys_fork(struct trap_frame *tf) {
     return do_fork(tf);
 }
 
-// SYS_WAITPID：sleep 等到 child exit；reap 成功回 child pid
 static long sys_waitpid(struct trap_frame *tf) {
     return do_waitpid((long)tf->a0);
 }
 
-// SYS_EXIT：自己標 ZOMBIE 並切走，不返回
 static long sys_exit(struct trap_frame *tf) {
     do_exit((int)tf->a0);
     return 0;
 }
 
-// SYS_STOP：強制終止 pid，不能殺自己
 static long sys_stop(struct trap_frame *tf) {
     return do_stop((long)tf->a0);
 }
 
-// SYS_DISPLAY：把 user 提供的 BMP（XRGB8888）置中拷進 framebuffer
 static long sys_display(struct trap_frame *tf) {
     video_bmp_display((unsigned int *)tf->a0, (int)tf->a1, (int)tf->a2);
     return 0;
 }
 
-// SYS_USLEEP：阻塞 usec 微秒；期間 thread 不在 run queue，CPU 讓給別人
 static long sys_usleep(struct trap_frame *tf) {
     return do_usleep((unsigned int)tf->a0);
 }
 
-// SYS_SIGNAL：註冊 user handler；POSIX 規格回前一個 handler，本 lab 簡化為回 0
 static long sys_signal(struct trap_frame *tf) {
     return do_signal((int)tf->a0, (unsigned long)tf->a1);
 }
 
-// SYS_KILL：對 pid 設 signal pending bit；目標下次 trap exit 時才 deliver
 static long sys_kill(struct trap_frame *tf) {
     return do_kill((int)tf->a0, (int)tf->a1);
 }
 
-// switch dispatcher：避免 function pointer table 在 .rodata 留絕對位址，
-// kernel self-relocation 後 table entry 仍指向 link 時舊位置
+// switch 而非 function pointer table：self-relocation 後 .rodata 內絕對位址不 fix-up
 void do_syscall(struct trap_frame *tf) {
     long nr = (long)tf->a7;
     long ret;
@@ -95,8 +82,7 @@ void do_syscall(struct trap_frame *tf) {
         case SYS_USLEEP:     ret = sys_usleep(tf);     break;
         case SYS_SIGNAL:     ret = sys_signal(tf);     break;
         case SYS_KILL:       ret = sys_kill(tf);       break;
-        // SYS_SIGRETURN 特殊：do_sigreturn 已把整個 *tf 覆寫成 saved_tf
-        // （含 a0），這裡若再 tf->a0 = ret 會把復原的 a0 蓋掉，所以 return 早退
+        // do_sigreturn 已整盤覆寫 *tf（含 a0），不能再走後面的 a0 寫回
         case SYS_SIGRETURN:  do_sigreturn(tf);         return;
         default:             ret = -1;                 break;
     }

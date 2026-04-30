@@ -66,12 +66,7 @@ clear_bss:
     blt  t0, t1, clear_bss
 clear_bss_done:
 
-    # --- Clear thread pointer ---
-    # u-boot / OpenSBI 可能在 tp 留下非 NULL 垃圾值（per-hart pointer 之類）。
-    # kthread_bootstrap_idle 之前就有可能進 trap（IRQ-mode UART 殘留 RX byte），
-    # do_trap → deliver_signal → kthread_get_current 讀 tp，若是垃圾值且非 0
-    # 會繞過 (!me) guard → deref garbage → load fault → infinite trap loop。
-    # 顯式清 0 讓 guard 守得住。
+    # firmware 可能在 tp 留垃圾，kthread_bootstrap_idle 之前進 trap 會炸
     mv   tp, zero
 
     # --- Set up stack ---

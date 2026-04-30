@@ -1,6 +1,4 @@
-# user-side syscall wrappers：把 NR 塞進 a7，args 已在 a0..a5（caller 放好），
-# ecall 觸發 trap，kernel dispatcher 把回傳值寫進 trap_frame.a0，sret 後 a0 即 return。
-# C 端只需 long getpid(void); 等 prototype，呼叫起來就跟普通 function 一樣。
+# user-side syscall wrappers：a7 = NR, args 已在 a0..a5
 
 .section .text
 
@@ -44,7 +42,7 @@ waitpid:
 exit:
     li   a7, 6
     ecall
-1:  j 1b              # exit 不返回；compiler attribute 也標 noreturn
+1:  j 1b              # exit 不返回
 
 .globl stop
 stop:
