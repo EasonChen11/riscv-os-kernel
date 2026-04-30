@@ -30,26 +30,23 @@ int toggle_heartbeat(void) {
 static struct timer_event *pool;
 static unsigned long       pool_size;
 
-// 從靜態池取一個空閒 slot；池滿回 NULL。ISR 與 thread 都會呼叫，必須 irq_save。
+// 從靜態池取一個空閒 slot；池滿回 NULL。
+// 不自己 irq_save：唯一 caller 是 add_timer_ticks，已在外圍包好。
 static struct timer_event* pool_alloc(void) {
-    unsigned long s = irq_save();
     for (unsigned long i = 0; i < pool_size; i++) {
         if (!pool[i].in_use) {
             pool[i].in_use = 1;
             init_list_head(&pool[i].link);
-            irq_restore(s);
             return &pool[i];
         }
     }
-    irq_restore(s);
     return (void*)0;
 }
 
 // 釋放 slot：呼叫端應先 list_del 拆下 queue。
+// 不自己 irq_save：唯一 caller 是 handle_timer_interrupt（trap 內 SIE=0）。
 static void pool_free(struct timer_event* e) {
-    unsigned long s = irq_save();
     e->in_use = 0;
-    irq_restore(s);
 }
 
 // ─── Timer queue（sorted by expire_tick，遞增） ─────────────────────────
@@ -70,8 +67,8 @@ static inline void reprogram_hw(void) {
 // ─── Public API ─────────────────────────────────────────────────────────
 
 // 把已填好欄位的 event 按 expire_tick 插進 queue 並重排硬體 timer。
+// 不自己 irq_save：唯一 caller 是 add_timer_ticks，已在外圍包好。
 static void timer_queue_insert(struct timer_event* e) {
-    unsigned long s = irq_save();
     // 走 queue 找第一個 expire_tick 比新 event 大的節點；若整圈沒找到，cur 會停在 &timer_queue。
     struct list_head* cur;
     for (cur = timer_queue.next; cur != &timer_queue; cur = cur->next) {
@@ -82,21 +79,25 @@ static void timer_queue_insert(struct timer_event* e) {
     // queue 空時 cur==&timer_queue、cur->prev==&timer_queue，照樣正確。
     list_add(&e->link, cur->prev);
     reprogram_hw();
-    irq_restore(s);
 }
 
 // 註冊 one-shot timer：ticks 個 mtime tick 後排入 task queue 呼叫 cb(arg)。
 // 可在 ISR 或 thread 上下文呼叫。preempt / usleep 等 sub-second 場景直接用這個。
+// 一個 irq_save 蓋全程：pool_alloc + 寫 event 欄位 + queue insert + reprogram timer
+// 全部 atomic。pool_alloc / timer_queue_insert 為內部靜態 helper、不再自包，避免冗餘。
 void add_timer_ticks(timer_callback_t cb, void* arg, unsigned long ticks) {
     if (ticks == 0) {
         uart_puts("add_timer_ticks: invalid ticks\n");
         return;
     }
+    unsigned long s = irq_save();
+
     unsigned long now;
     asm volatile("rdtime %0" : "=r"(now));
 
     struct timer_event* e = pool_alloc();
     if (!e) {
+        irq_restore(s);
         uart_puts("add_timer_ticks: pool full\n");
         return;
     }
@@ -105,6 +106,8 @@ void add_timer_ticks(timer_callback_t cb, void* arg, unsigned long ticks) {
     e->expire_tick = now + ticks;
 
     timer_queue_insert(e);
+
+    irq_restore(s);
 }
 
 // 秒級包裝：把 sec 換算成 ticks 後委派給 add_timer_ticks。
