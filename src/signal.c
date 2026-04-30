@@ -5,16 +5,12 @@
 #include "buddy.h"    // signal stack 配/釋放走 buddy（一頁就夠）
 #include "string.h"   // memcpy 拷 trampoline
 
-// sigreturn trampoline：兩條 RISC-V instruction，照 little-endian byte 排
-//   li a7, 11   ; addi a7, x0, 11  → 0x00B00893
-//   ecall       ; 0x00000073
-// 放在 .rodata；deliver_signal 把這 8 byte 複製進 user signal stack 頂端，
+// trampoline 機器碼定義在 src/trampoline.S（.rodata 內 li a7,11 + ecall），
+// 兩個 label 標起訖；deliver_signal 把這段 byte 複製進 user signal stack 頂端，
 // 設 user ra=trampoline 後 handler 結束 ret 進去，下一條 ecall 觸發 SYS_SIGRETURN
 // 把 trap_frame 復原 + 釋放 signal stack。
-const unsigned char sigreturn_trampoline[8] = {
-    0x93, 0x08, 0xb0, 0x00,   // li a7, 11
-    0x73, 0x00, 0x00, 0x00,   // ecall
-};
+extern const char sigreturn_trampoline[];
+extern const char sigreturn_trampoline_end[];
 
 // 由 do_trap 在 trap exit 前呼叫；user thread 才會走完整路徑。
 //
@@ -56,9 +52,10 @@ void deliver_signal(struct trap_frame *tf) {
         me->signal_saved_tf   = *tf;
         me->signal_stack      = buddy_alloc_pages(0);
 
+        unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
         unsigned long top   = (unsigned long)me->signal_stack + PAGE_SIZE;
-        unsigned long tramp = (top - sizeof(sigreturn_trampoline)) & ~0xfUL;
-        memcpy((void *)tramp, sigreturn_trampoline, sizeof(sigreturn_trampoline));
+        unsigned long tramp = (top - tramp_size) & ~0xfUL;
+        memcpy((void *)tramp, sigreturn_trampoline, tramp_size);
         // 寫完指令必須 fence.i：CPU I-cache 可能還是舊內容（這頁是新配的），
         // sret 進 user 後 fetch trampoline byte 可能撈到 stale cache line。
         asm volatile("fence.i" ::: "memory");
