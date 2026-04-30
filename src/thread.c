@@ -26,10 +26,14 @@ struct thread* kthread_create(thread_func_t fn) {
     t->is_kernel    = true;                    // 預設 kernel；do_exec / exec_umode 切到 user image 後翻成 false
     t->context.ra   = (unsigned long)fn;       // 第一次 switch_to 結尾 ret 會跳到這裡
     t->context.sp   = (unsigned long)t->kstack + KSTACK_SIZE;   // 棧頂（RISC-V stack 向下長）
+    // list 初始化 + 加入 all_threads 索引
     init_list_head(&t->rq_link);
     init_list_head(&t->child_link);
     init_list_head(&t->children);
     list_add_tail(&t->all_link, &all_threads);
+    // signal handler 預設都指向 0（default handler）
+    t->signal_pending = 0;
+    for (int i = 0; i < NSIG; i++) t->signal_handlers[i] = 0;
     enqueue_runqueue(t);
     return t;
 }
