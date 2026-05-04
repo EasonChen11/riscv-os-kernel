@@ -71,14 +71,15 @@ static void spawn_user_entry(void) {
     do_exit(-1);                   // exec failed → 標 ZOMBIE，parent waitpid 會醒
 }
 
+// only from shell call exec_cmd("exec ...")，不直接暴露 sys_exec syscall 給 user 程式；實作 fork+exec 後可以改成直接 sys_exec。
 long spawn_user(const char *path) {
     int i;
     for (i = 0; i < (int)sizeof(spawn_path_buf) - 1 && path[i]; i++)
         spawn_path_buf[i] = path[i];
     spawn_path_buf[i] = 0;
 
-    struct thread *parent = kthread_get_current();
-    struct thread *c = kthread_create(spawn_user_entry);
+    struct thread *parent = kthread_get_current(); // shell
+    struct thread *c = kthread_create(spawn_user_entry); // new thread starts at spawn_user_entry
     c->ppid = parent->pid;
     list_add_tail(&c->child_link, &parent->children);
     return c->pid;
