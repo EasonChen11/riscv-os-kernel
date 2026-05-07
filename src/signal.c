@@ -36,7 +36,7 @@ void deliver_signal(struct trap_frame *tf) {
 
         unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
         unsigned long top   = (unsigned long)me->signal_stack + PAGE_SIZE;
-        unsigned long tramp = (top - tramp_size) & ~0xfUL;
+        unsigned long tramp = (top - tramp_size) & ~0xfUL; // RISC-V 的呼叫慣例要求 Stack 指標（以及跳轉位址）最好對齊，否則某些指令可能會觸發 Alignment Fault。
         memcpy((void *)tramp, sigreturn_trampoline, tramp_size);
         // 新配的頁，I-cache 可能撈到 stale line
         asm volatile("fence.i" ::: "memory");
