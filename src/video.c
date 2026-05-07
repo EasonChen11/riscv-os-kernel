@@ -4,7 +4,7 @@
  * 1. video_init 透過 fw_cfg 找到 "etc/ramfb" entry，把一份 RAMFBCfg 寫進去
  *    告訴 QEMU 「framebuffer 在 FB_BASE，寬高/格式如此」。
  * 2. 之後 user 寫 FB_BASE 那塊 DRAM，QEMU display 就會掃出來。
- * 3. OrangePi RV2 那條路（沒 ramfb，硬編 base 0x7f700000）由 commit #12 加。
+ * 3. OrangePi RV2 那條路（沒 ramfb，硬編 base 0x7f700000）。
  */
 
 #include <stdint.h>
