@@ -71,69 +71,9 @@ run: build
 	# 否則 boot 早期 RX FIFO 還沒就緒會吃掉前幾個 char。
 	# 退出 QEMU：Ctrl-A X
 
-# ─── User Program (osctest.bin) ────────────────────────────────────────
-# 跑在 U-mode 的測試程式。kernel shell 用 `exec osctest.bin` 跳過去。
-# 跟 kernel 不共用 source 也不共用 link.ld：user binary 是 raw flat layout，
-# 所有 section 從 0 排，objcopy -O binary 後直接被 exec_umode 載入執行。
-USER_DIR     = user
-USER_BUILD   = $(USER_DIR)/build
-USER_BIN     = osctest.bin
-USER_ELF     = $(USER_BUILD)/osctest.elf
-USER_LD      = $(USER_DIR)/link.ld
-
-USER_C_SRCS   = $(wildcard $(USER_DIR)/*.c)
-USER_S_SRCS   = $(wildcard $(USER_DIR)/*.S)
-USER_OBJS     = $(USER_C_SRCS:$(USER_DIR)/%.c=$(USER_BUILD)/%_c.o)
-USER_OBJS    += $(USER_S_SRCS:$(USER_DIR)/%.S=$(USER_BUILD)/%_s.o)
-
-# 跟 kernel 共用 CFLAGS（rv64gc / freestanding / nostdlib），但 user binary 用 PIE：
-# user binary 由 cpio 載入，runtime base address 不固定（隨 cpio entry offset），
-# absolute address 在 -Ttext=0 + medany 下會被 ld lower 成「binary offset」
-# （hardcoded immediate），跑時 base ≠ 0 直接 load fault。
-# -fpie 生成 PC-relative reference (auipc + addi)，runtime base 不影響。
-USER_CFLAGS  = -march=rv64gc_zifencei -mcmodel=medany -fpie -fomit-frame-pointer -ffreestanding -nostdlib -g -Wall -I$(USER_DIR)
-# -fomit-frame-pointer：讓 local var (&cnt) 用 sp + offset 算。預設 -O0 用 s0
-# 當 frame pointer，s0 是 callee-saved 不被 syscall 改 / trap_frame 又會複製
-# parent 的 s0 → fork 後 child 的 &cnt 變成 parent ustack 位址。do_fork 只調
-# trap_frame.sp，沒法調 s0。omit frame pointer 後 &cnt 跟 sp 同步，符合 lab5
-# fork_test reference 行為。
-
-usrprg: $(USER_BIN)
-
-$(USER_BUILD)/%_c.o: $(USER_DIR)/%.c
-	@mkdir -p $(@D)
-	$(CC) $(USER_CFLAGS) -c $< -o $@
-
-$(USER_BUILD)/%_s.o: $(USER_DIR)/%.S
-	@mkdir -p $(@D)
-	$(CC) $(USER_CFLAGS) -c $< -o $@
-
-$(USER_ELF): $(USER_OBJS) $(USER_LD)
-	$(LD) -T $(USER_LD) --no-relax -o $@ $(USER_OBJS)
-	# --no-relax：阻止 ld 把 auipc+addi 的 PC-relative reference 折成 absolute
-	# immediate（在 -Ttext=0 下 image base=0 = link-time PC，relax 後失去 PIE 性質）
-
-$(USER_BIN): $(USER_ELF)
-	$(OBJCOPY) -O binary $< $@
-
-# ─── initramfs 重打 ────────────────────────────────────────────────────
-# 從現有 initramfs.cpio 解壓到 $(USER_BUILD)/initrd_root，加上剛 build 的
-# osctest.bin，再 cpio -o 重打回 initramfs.cpio。
-# 這樣保留 lab4 留下的 prog.bin（沒 source 在 repo），又把新 user binary 進去。
-INITRD_ROOT  = $(USER_BUILD)/initrd_root
-
-cpio: $(USER_BIN)
-	@rm -rf $(INITRD_ROOT)
-	@mkdir -p $(INITRD_ROOT)
-	@cd $(INITRD_ROOT) && cpio -id < ../../../initramfs.cpio 2>/dev/null
-	@cp $(USER_BIN) $(INITRD_ROOT)/$(USER_BIN)
-	@cd $(INITRD_ROOT) && find . -type f | cpio -H newc -o > ../../../initramfs.cpio 2>/dev/null
-	@echo "initramfs.cpio updated. Contents:"
-	@cpio -t < initramfs.cpio 2>/dev/null
-
 # Cleanup Rule
 clean:
-	rm -f $(TARGET) $(TARGET).fit $(USER_BIN)
-	rm -rf $(BUILD_DIR) $(USER_BUILD)
+	rm -f $(TARGET) $(TARGET).fit
+	rm -rf $(BUILD_DIR)
 
-.PHONY: build clean run usrprg cpio
+.PHONY: build clean run
