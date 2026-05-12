@@ -93,7 +93,7 @@ long do_fork(struct trap_frame *parent_tf) {
 
 // parent 死前把 children 全部過繼給 idle（兼任 init）。
 // 前置：caller 在 syscall trap path，SIE=0。只搬 child_link 與 ppid，不動 child 的 state。
-static void reparent_children_to_init(struct thread *dying) {
+static void reparent_children_to_idle(struct thread *dying) {
     while (!list_empty(&dying->children)) {
         struct thread *c = list_entry(dying->children.next,
                                       struct thread, child_link);
@@ -108,7 +108,7 @@ static void reparent_children_to_init(struct thread *dying) {
 // 共用給 do_exit（t == me）與 do_stop（t == 別人）。
 static void zombify(struct thread *t) {
     t->state = THREAD_ZOMBIE;
-    reparent_children_to_init(t);
+    reparent_children_to_idle(t);
 
     struct thread *p = find_pid(t->ppid);
     if (p && p->state == THREAD_WAITING
@@ -148,7 +148,6 @@ long do_waitpid(long pid) {
 // 將自己標 ZOMBIE 並從 run queue 摘除；若 parent 在 waitpid 等就喚醒。
 // 注意不在這裡放進 zombie_list：留在 children list 給 parent waitpid 找；
 // 沒 parent 等的（比如 root kthread foo）由下一次 schedule 內 list_del 後接手。
-// 自己 exit：reparent children 給 init、必要時通知 parent。
 // 自己 exit：reparent children 給 idle、必要時通知 parent。
 // 前置：syscall trap path，SIE=0。
 void do_exit(int status) {
