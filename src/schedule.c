@@ -33,6 +33,7 @@ void kill_zombies(void) {
         struct thread* z = list_entry(zombie_list.next, struct thread, rq_link);
         list_del(&z->rq_link);
         list_del(&z->all_link);          // 從 all_threads 摘下，find_pid 不再回它
+        list_del_init(&z->child_link);   // 從 parent.children 拔下（含 init），防 dangling
         uart_puts("[zombie freed pid=");
         uart_hex(z->pid);
         uart_puts("]\n");
