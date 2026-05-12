@@ -27,13 +27,13 @@ struct thread {
     enum thread_state   state;
     int                 pid;
     int                 ppid;
-    void               *kstack;
-    void               *ustack;      // 純 kernel thread 為 NULL
-    int                 wait_pid;    // -1 = 任意 child
+    void               *kstack;      // kernel stack
+    void               *ustack;      // user stack
+    int                 wait_pid;    // waitpid 等待的 child pid
     bool                is_kernel;   // 擋 user stop/kill idle/shell
     struct list_head    rq_link;     // run queue / zombie list 共用
-    struct list_head    child_link;
-    struct list_head    children;
+    struct list_head    child_link; // child 在 parent children list 的鏈結；parent 直接用 children list 頭
+    struct list_head    children; // parent 的 children list 頭，child_link 才是實際鏈結
     struct list_head    all_link;
     unsigned int        signal_pending;
     unsigned long       signal_handlers[NSIG];
@@ -43,6 +43,7 @@ struct thread {
 };
 
 extern struct list_head all_threads;
+extern struct thread *idle_thread;   // idle 兼任 init，承接 orphan child
 
 void kthread_init(void);
 struct thread* kthread_create(thread_func_t fn);

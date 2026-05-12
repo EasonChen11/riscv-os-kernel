@@ -91,6 +91,39 @@ long do_fork(struct trap_frame *parent_tf) {
     return c->pid;
 }
 
+// parent 死前把 children 全部過繼給 idle（兼任 init）。
+// 前置：caller 在 syscall trap path，SIE=0。只搬 child_link 與 ppid，不動 child 的 state。
+static void reparent_children_to_init(struct thread *dying) {
+    while (!list_empty(&dying->children)) {
+        struct thread *c = list_entry(dying->children.next,
+                                      struct thread, child_link);
+        list_del(&c->child_link);
+        c->ppid = idle_thread->pid;
+        list_add_tail(&c->child_link, &idle_thread->children);
+    }
+}
+
+// 將 t 標 ZOMBIE 並處理 parent 通知。caller 必須已把 t 從 runqueue 摘除。
+// 前置：呼叫端在 syscall trap path，SIE=0，故不需 irq_save。
+// 共用給 do_exit（t == me）與 do_stop（t == 別人）。
+static void zombify(struct thread *t) {
+    t->state = THREAD_ZOMBIE;
+    reparent_children_to_init(t);
+
+    struct thread *p = find_pid(t->ppid);
+    if (p && p->state == THREAD_WAITING
+         && (p->wait_pid == -1 || p->wait_pid == t->pid)) {
+        // parent 正在等 → 喚醒走 do_waitpid 路徑 reap（child_link 留著給它找）
+        p->state = THREAD_RUNNING;
+        enqueue_runqueue(p);
+    } else if (!p || p == idle_thread) {
+        // 沒人會等（parent 是 idle 或不存在）→ 自己進 zombie_list 給 idle 收
+        list_del_init(&t->child_link);
+        enqueue_zombie(t);
+    }
+    // 其餘：parent 活著但沒在 wait → 留 children list 等將來 waitpid
+}
+
 // 等 child exit；child 已 ZOMBIE 直接 reap，否則自己 sleep 到 do_exit 喚我
 long do_waitpid(long pid) {
     struct thread *me = kthread_get_current();
@@ -115,44 +148,30 @@ long do_waitpid(long pid) {
 // 將自己標 ZOMBIE 並從 run queue 摘除；若 parent 在 waitpid 等就喚醒。
 // 注意不在這裡放進 zombie_list：留在 children list 給 parent waitpid 找；
 // 沒 parent 等的（比如 root kthread foo）由下一次 schedule 內 list_del 後接手。
+// 自己 exit：reparent children 給 init、必要時通知 parent。
+// 自己 exit：reparent children 給 idle、必要時通知 parent。
+// 前置：syscall trap path，SIE=0。
 void do_exit(int status) {
     (void)status;
     struct thread *me = kthread_get_current();
 
-    me->state = THREAD_ZOMBIE;
-    list_del_init(&me->rq_link);    // init 是為了之後若被加進 zombie_list（含 list_del 路徑）安全
-
-    // 喚醒 waiting parent（若條件符合）
-    struct thread *p = find_pid(me->ppid);
-    if (p && p->state == THREAD_WAITING
-         && (p->wait_pid == -1 || p->wait_pid == me->pid)) {
-        p->state = THREAD_RUNNING;
-        enqueue_runqueue(p);
-    }
-
-    // 沒 parent 認領的 zombie：直接丟 zombie_list 讓 idle 收
-    if (!p) {
-        enqueue_zombie(me);
-    }
+    list_del_init(&me->rq_link);
+    zombify(me);
 
     schedule();   // 切走後不會回來
     while (1);    // 防呆
 }
 
-// 強制終止 pid：標 ZOMBIE 並搬進 zombie_list；不能殺自己（殺自己用 exit）
+// 強制終止 pid：等同替它 do_exit。不能殺自己（殺自己用 exit）；不能殺 kernel thread。
+// 前置：syscall trap path，SIE=0。
 long do_stop(long pid) {
     struct thread *t = find_pid(pid);
-    if (!t || t == kthread_get_current()) return -1;
-    if (t->is_kernel) return -1;   // 擋下殺 idle / kernel-side shell 之類核心 thread
+    if (!t || t == kthread_get_current() || t->is_kernel) return -1;
     if (t->state == THREAD_RUNNING) {
         list_del(&t->rq_link);
     }
-    // WAITING thread 已不在 run queue，直接搬就好
-    t->state = THREAD_ZOMBIE;
-    enqueue_zombie(t);
-    // 從 child list 卸下（避免 parent waitpid 看到一個 ZOMBIE 但無人 reap 的怪態）
-    // list_del_init 因為 child_link 之後不會再加進任何 list，留著 stale prev/next 是雷
-    list_del_init(&t->child_link);
+    // WAITING thread 已不在 run queue
+    zombify(t);
     return 0;
 }
 
