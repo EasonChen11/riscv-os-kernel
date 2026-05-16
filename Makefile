@@ -43,7 +43,7 @@ LDSCRIPT ?= link.ld
 # Linking
 $(TARGET).elf: $(OBJ_FILES)
 	@mkdir -p $(BUILD_DIR)
-	$(LD) -T $(LDSCRIPT) -o $(BUILD_DIR)/$(TARGET).elf $(OBJ_FILES)
+	$(LD) -T $(LDSCRIPT) --no-warn-rwx-segments -o $(BUILD_DIR)/$(TARGET).elf $(OBJ_FILES)
 
 # Image Packaging: ELF -> Binary -> FIT
 $(TARGET).fit: $(TARGET).elf

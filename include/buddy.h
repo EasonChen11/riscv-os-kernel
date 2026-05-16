@@ -2,9 +2,8 @@
 #define __BUDDY_H__
 
 #include "list.h"
-#include "pgtable.h"
+#include "pgtable.h"   /* PAGE_SIZE 與 PAGE_OFFSET 由此提供 */
 
-#define PAGE_SIZE (1 << 12) // 4KB pages
 #define BUDDY_MAX_ORDER 16
 // #define BUDDY_MAX_PAGES (1 << BUDDY_MAX_ORDER) // 16K pages = 64MB total memory 已經使用 g_buddy_total_pages 來動態決定
 
