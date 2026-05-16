@@ -65,14 +65,11 @@ void schedule(void) {
     struct thread* next = list_entry(runqueue.next, struct thread, rq_link);
     if (next == prev) goto out;
 
+    /* satp 切換必須在 switch_to **之前**：對首次跑的 thread（fork child / 新
+     * kthread），switch_to 的 ret 直接跳到 next->context.ra，不會回到這個函式，
+     * 後面的程式碼跑不到。 */
+    switch_pgd(next->pgd_pa ? next->pgd_pa : g_kernel_pgd_pa);
     switch_to(prev, next);
-    /* switch_to 返回是「我這個 thread 又被 schedule 回來了」的視角；
-     * tp 已是 current=這條 thread，用 it 來決定 satp。kernel thread (pgd_pa=0)
-     * 沿用既有 satp（kernel PGD）；user thread 切到自己的 PGD。*/
-    {
-        struct thread *cur = kthread_get_current();
-        if (cur->pgd_pa) switch_pgd(cur->pgd_pa);
-    }
 out:
     irq_restore(flags);
 }
