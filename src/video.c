@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "video.h"
 #include "string.h"
+#include "pgtable.h"
 
 #define XRGB8888  875713112        /* "XR24" → little-endian fourcc */
 
@@ -47,7 +48,8 @@ struct QEMU_PACKED RAMFBCfg {
     uint32_t stride;
 };
 
-#define FW_CFG_BASE   0x10100000UL
+#define FW_CFG_PA     0x10100000UL
+#define FW_CFG_BASE   (PAGE_OFFSET + FW_CFG_PA)
 #define FW_CFG_SELECT (uint16_t*)(FW_CFG_BASE + 0x08)
 #define FW_CFG_DATA   (uint64_t*)(FW_CFG_BASE + 0x00)
 #define FW_CFG_DMA    (uint64_t*)(FW_CFG_BASE + 0x10)
@@ -76,12 +78,13 @@ struct QEMU_PACKED FWCfgDmaAccess {
 static void fw_cfg_dma_transfer(void* address,
                                 uint32_t length,
                                 uint32_t control) {
-    struct FWCfgDmaAccess access = {
-        .control = bswap32(control),
-        .length  = bswap32(length),
-        .address = bswap64((uint64_t)address),
-    };
-    *FW_CFG_DMA = bswap64((uint64_t)&access);
+    /* QEMU DMA 看 PA：buffer 與 descriptor 都要 virt_to_phys。
+     * access 必須 volatile，否則 -O2 會把 control 欄位讀進 reg 後 cache 住 */
+    volatile struct FWCfgDmaAccess access;
+    access.control = bswap32(control);
+    access.length  = bswap32(length);
+    access.address = bswap64(virt_to_phys((uint64_t)address));
+    *FW_CFG_DMA = bswap64(virt_to_phys((uint64_t)&access));
     while (bswap32(access.control) & ~FW_CFG_DMA_CTL_ERROR)
         ;
 }
@@ -134,7 +137,7 @@ static void flush_dcache(void* addr, unsigned long len) {
 void video_init(void) {
 #ifdef QEMU
     struct RAMFBCfg cfg = {
-        .addr   = bswap64(FB_BASE),
+        .addr   = bswap64(FB_BASE_PA),    /* QEMU 看 PA */
         .fourcc = bswap32(XRGB8888),
         .flags  = bswap32(0),
         .width  = bswap32(FB_WIDTH),
@@ -152,7 +155,7 @@ void video_init(void) {
 
 // 把 bmp 置中貼進 framebuffer。bmp 格式假設跟 FB 同樣 XRGB8888。
 void video_bmp_display(unsigned int* bmp_image, int width, int height) {
-    unsigned int* fb = (unsigned int*)FB_BASE;
+    unsigned int* fb = (unsigned int*)FB_BASE_VA;   /* kernel 透過 high-VA linear map 寫 */
     int start_x = (FB_WIDTH - width) / 2;
     int start_y = (FB_HEIGHT - height) / 2;
     for (int y = 0; y < height; y++) {

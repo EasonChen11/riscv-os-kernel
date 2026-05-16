@@ -2,6 +2,7 @@
 #define __BUDDY_H__
 
 #include "list.h"
+#include "pgtable.h"
 
 #define PAGE_SIZE (1 << 12) // 4KB pages
 #define BUDDY_MAX_ORDER 16
@@ -25,13 +26,15 @@ void buddy_free_pages(void *addr);
 void buddy_register_range(unsigned long base_addr, unsigned long size);
 void buddy_reset_step(void); // 重置 log step 編號為 1，供外部測試腳本在跑前呼叫
 
-// O(1) address <-> page index helpers (shared with dynalloc)
-static inline unsigned long buddy_addr_to_page_idx(unsigned long addr) {
-    return (addr - g_buddy_base_addr) / PAGE_SIZE;
+/* g_buddy_base_addr 為 PA；外部 helper 公開 VA。
+ * Sv39 啟用後 kernel 一律透過 PAGE_OFFSET 的 linear map 存取頁框，
+ * buddy_alloc_pages 回傳 VA、buddy_free_pages 也吃 VA。 */
+static inline unsigned long buddy_addr_to_page_idx(unsigned long va) {
+    return (va - PAGE_OFFSET - g_buddy_base_addr) / PAGE_SIZE;
 }
 
 static inline unsigned long buddy_page_idx_to_addr(unsigned long idx) {
-    return g_buddy_base_addr + idx * PAGE_SIZE;
+    return PAGE_OFFSET + g_buddy_base_addr + idx * PAGE_SIZE;
 }
 
 #endif // __BUDDY_H__

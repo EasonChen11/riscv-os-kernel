@@ -2,6 +2,7 @@
 #include "fdt.h"
 #include "uart.h"
 #include "sbi.h"
+#include "pgtable.h"
 
 // linker script 提供的 kernel 範圍符號
 extern char _start[];
@@ -34,18 +35,14 @@ void bootinfo_init(const void* fdt, unsigned long reloc_addr) {
         int len = 0;                                                                                                    
         const void* prop = fdt_getprop(fdt, chosen, "linux,initrd-start", &len);
         // 2 cases: 64-bit initrd base (len=8) or 32-bit initrd base (len=4)。實驗中以 32-bit 為主。
-        if (prop) {                                                                                                     
-            if (len == 8)                                         
-                g_initrd_base = (const void*)fdt_read_cells(prop, 2);                                                   
-            else if (len == 4)                                                                                          
-                g_initrd_base = (const void*)fdt_read_cells(prop, 1);                                                   
-        }                                                                                                               
+        if (prop) {
+            unsigned long pa = (len == 8) ? fdt_read_cells(prop, 2) : fdt_read_cells(prop, 1);
+            g_initrd_base = (const void*)phys_to_virt(pa);
+        }
         prop = fdt_getprop(fdt, chosen, "linux,initrd-end", &len);
-        if (prop) {                                                                                                     
-            if (len == 8)                                         
-                g_initrd_end = fdt_read_cells(prop, 2);                                                                 
-            else if (len == 4)
-                g_initrd_end = fdt_read_cells(prop, 1);                                                                 
+        if (prop) {
+            unsigned long pa = (len == 8) ? fdt_read_cells(prop, 2) : fdt_read_cells(prop, 1);
+            g_initrd_end = phys_to_virt(pa);
         }                                                 
     } else {
         uart_puts("bootinfo: /chosen not found\n");

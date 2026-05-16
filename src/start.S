@@ -1,82 +1,55 @@
+/*
+ * Lab6 boot path (QEMU virt, OpenSBI hand-off at S-mode, PC = PA 0x80200000):
+ *   1. clear BSS via low-PA  (objcopy -O binary 不含 NOBITS sections，
+ *                              BSS 必須在 setup_vm 用 pgd[]/pmd_*[] 前歸零)
+ *   2. call setup_vm         (建 identity + higher-half map、寫 satp)
+ *   3. 跳到 2f 的高半 VA copy
+ *   4. reload sp = _end (now VA)、dtb_pa + PAGE_OFFSET → dtb_va、tp=0
+ *   5. call drop_identity_map
+ *   6. call add_trap         (stvec = handle_exception VA)
+ *   7. tail start_kernel(hartid, dtb_va, 0)
+ */
+
 .section ".text.boot"
-.global _start      # update _start to global
+.global _start
 
 _start:
-    mv s0, a0              # save hart id
-    mv s1, a1              # save dtb address
+    mv      s0, a0                  /* hart id (OpenSBI 給 a0) */
+    mv      s1, a1                  /* dtb PA (a1) */
 
-    # Check if we are already relocated
-    la   t0, _start        # linked address of _start (PC-relative)
-    la   t1, _end
-    sub  s2, t1, t0        # s2 = kernel_size (_end - _start)
+    la      sp, _end                /* low PA (PC-relative, pre-MMU) */
 
-    # Set up temporary stack for C call (use _end as temp stack)
-    la   sp, _end
+    /* clear BSS pre-MMU 透過 PA；objcopy 不會把 NOBITS 寫進 binary，
+     * loader 載入的記憶體位元值是 DRAM 殘餘，pgd[] 開機若是 garbage MMU 立刻爛掉 */
+    la      t0, __bss_start
+    la      t1, __bss_stop
+    bge     t0, t1, 1f
+0:
+    sd      zero, 0(t0)
+    addi    t0, t0, 8
+    blt     t0, t1, 0b
+1:
+    call    setup_vm                /* MMU on：identity 暫時保留供我們跳到高半 VA */
 
-    # Call get_reloc_addr(dtb, kernel_size) to determine relocation target
-    mv   a0, s1            # dtb address
-    mv   a1, s2            # kernel size
-    call bootloader_find_reloc_addr    # return value in a0
+    /* la 是 PC-relative；此刻 PC 仍在低 PA，la t0, 2f 得低 PA → 加 PAGE_OFFSET = 高 VA */
+    la      t0, 2f
+    li      t1, 0xffffffc000000000
+    add     t0, t0, t1
+    jr      t0
 
-    # If get_reloc_addr returns 0 (failed), use hardcoded fallback
-    beqz a0, use_fallback
-    mv   s3, a0            # s3 = relocation target address
-    j    check_reloc
+.align 2
+2:
+    la      sp, _end                /* 現在 la 給高 VA */
 
-use_fallback:
-#ifdef QEMU
-    li   s3, 0x82000000
-#else
-    li   s3, 0x20000000
-#endif
+    li      t1, 0xffffffc000000000
+    add     s1, s1, t1              /* dtb_pa → dtb_va */
 
-check_reloc:
-    la   t0, _start
-    beq  t0, s3, relocated # already at target, skip copy
+    mv      tp, zero                /* firmware 可能在 tp 留垃圾 */
 
-    # --- Self-relocation: copy _start ~ _end to s3 ---
-    la   t0, _start        # source start
-    la   t1, _end          # source end
-    mv   t2, s3            # destination start
-copy_loop:
-    ld   t3, 0(t0)
-    sd   t3, 0(t2)
-    addi t0, t0, 8
-    addi t2, t2, 8
-    blt  t0, t1, copy_loop
+    call    drop_identity_map
+    call    add_trap                /* stvec = handle_exception VA */
 
-    # 清除 I-cache，確保 CPU 執行剛寫入的新指令而非 cache 中的舊指令
-    fence.i
-
-    # Jump to relocated "relocated" label (skip _start re-init)
-    la   t0, relocated
-    la   t1, _start
-    sub  t0, t0, t1        # offset = relocated - _start
-    add  t0, s3, t0        # target = reloc_base + offset
-    jr   t0
-
-relocated:
-    # --- Clear BSS ---
-    la   t0, __bss_start
-    la   t1, __bss_stop
-    bge  t0, t1, clear_bss_done
-clear_bss:
-    sd   zero, 0(t0)
-    addi t0, t0, 8
-    blt  t0, t1, clear_bss
-clear_bss_done:
-
-    # firmware 可能在 tp 留垃圾，kthread_bootstrap_idle 之前進 trap 會炸
-    mv   tp, zero
-
-    # --- Set up stack ---
-    la   sp, _end
-
-    # --- Set trap vector ---
-    call add_trap
-
-    # --- Call start_kernel ---
-    mv   a0, s0            # pass hart id
-    mv   a1, s1            # pass dtb address
-    mv   a2, s3            # allocate location
-    tail start_kernel
+    mv      a0, s0
+    mv      a1, s1
+    mv      a2, zero                /* reloc_addr 已停用 */
+    tail    start_kernel

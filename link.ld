@@ -1,13 +1,14 @@
+/* lab6 board (OrangePi RV2) linker script */
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 SECTIONS
 {
-    . = 0x00200000;
+    . = 0xffffffc000200000;
     _start = .;
-    .text : { *(.text.boot) *(.text) }
-    .rodata : { *(.rodata) }
-    .data : { *(.data) }
-    .bss : {
+    .text   : AT(0x00200000)                                { *(.text.boot) *(.text) }
+    .rodata : AT(LOADADDR(.text)   + SIZEOF(.text))         { *(.rodata) }
+    .data   : AT(LOADADDR(.rodata) + SIZEOF(.rodata))       { *(.data) }
+    .bss    : AT(LOADADDR(.data)   + SIZEOF(.data)) {
         __bss_start = .;
         *(.sbss) *(.bss)
         __bss_stop = .;

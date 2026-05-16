@@ -3,6 +3,7 @@
 #include "string.h"
 #include "plic.h"
 #include "irq.h"
+#include "pgtable.h"
 
 unsigned long uart_base  = 0x0L;   // DTB 解析前為 0；解析後填入
 unsigned long uart_shift = 0x0L;   // 0 for 16550A(QEMU), 2 for DW UART (4-byte stride)
@@ -23,7 +24,7 @@ void uart_init(const void* fdt) {
         return;
     }
     if (addr != 0)
-        uart_base = addr;
+        uart_base = phys_to_virt(addr);   /* MMU 已啟用：MMIO 透過 high-VA linear map 存取 */
 
     // reg-shift：16550A 沒這屬性預設 0；DW/SiFive 為 2
     int shift_size = 0;

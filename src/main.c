@@ -12,6 +12,7 @@
 #include "schedule.h"
 #include "exec.h"
 #include "thread.h"
+#include "pgtable.h"
 // schedule.h 已 declare start_preempt
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
@@ -48,9 +49,10 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 1: 登記所有 reserved 區段。memory_reserve 只把區間 push 到靜態陣列，不依賴任何 allocator
     // OpenSBI 的區段不能硬編碼，若板子 /reserved-memory 有列就由 memory_reserve_fdt_reserved_mem 處理；
     // 否則 startup heap 會透過 lower-bound 避開（見 startup_auto_init），但 buddy 仍可能管到那段 RAM
-    memory_reserve(g_kernel_start, g_kernel_end - g_kernel_start);                        // kernel image
-    memory_reserve((unsigned long)g_fdt_base, g_fdt_size);                                // dtb blob
-    memory_reserve((unsigned long)g_initrd_base,
+    /* mem_reserve / buddy 全是 PA-domain；kernel/fdt/initrd 在 lab6 都存 VA，需先轉 PA */
+    memory_reserve(virt_to_phys(g_kernel_start), g_kernel_end - g_kernel_start);          // kernel image
+    memory_reserve(virt_to_phys((unsigned long)g_fdt_base), g_fdt_size);                  // dtb blob
+    memory_reserve(virt_to_phys((unsigned long)g_initrd_base),
                    g_initrd_end - (unsigned long)g_initrd_base);                          // initramfs
     memory_reserve_fdt_reserved_mem(fdt);                                                 // /reserved-memory 子節點
 

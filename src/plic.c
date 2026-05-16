@@ -1,6 +1,7 @@
 #include "plic.h"
 #include "fdt.h"
 #include "uart.h"
+#include "pgtable.h"
 
 // PLIC memory map
 //   BASE + 0x000000 + 4*IRQ             : priority[IRQ]
@@ -35,6 +36,7 @@ void plic_init(const void *fdt, unsigned long hartid) {
         uart_puts("[plic] reg parse failed\n");
         return;
     }
+    plic_base = phys_to_virt(plic_base);   /* MMIO 透過 high-VA linear map 存取 */
 
     plic_ctx = 2 * (int)hartid + 1;  // hart_id S-mode context
 

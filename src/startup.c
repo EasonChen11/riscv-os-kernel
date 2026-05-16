@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "bootinfo.h"
 #include "mem_reserve.h"
+#include "pgtable.h"
 
 static unsigned long heap_start, heap_end, heap_current; // heap_current 是下一個可用位址，已分配的範圍是 [heap_start, heap_current)
 
@@ -27,19 +28,21 @@ void startup_init(unsigned long heap_size) {
     // 從最小的 end 開始掃：kernel 被 relocate 到 RAM 頂端，若取 max 會使搜尋起點過高；
     // 取 min 後由 memory_find_free 跳過 kernel / fdt / initrd / /reserved-memory 等已登記區段，
     // 找出中段的可用空洞。結果再 clamp 到 g_mem_base 以上避免落在 RAM 之外
-    unsigned long lower = g_kernel_end; // lower 紀錄 kernel / fdt / initrd 的結尾中較小的那個，作為搜尋起點的下界
-    unsigned long fdt_end    = (unsigned long)g_fdt_base + g_fdt_size;
-    unsigned long initrd_end = g_initrd_end;
-    if (fdt_end    < lower) lower = fdt_end;
-    if (initrd_end < lower) lower = initrd_end;
-    if (lower < g_mem_base) lower = g_mem_base;
-    unsigned long start = memory_find_free(lower, g_mem_base + g_mem_size, heap_size, 0x1000); // 4KB 對齊
-    if (start == 0) {
+    /* lab6: 全部以 PA 算範圍（mem_reserve 是 PA-domain），最後 heap 暴露 VA */
+    unsigned long lower_pa = virt_to_phys(g_kernel_end);
+    unsigned long fdt_end_pa = virt_to_phys((unsigned long)g_fdt_base) + g_fdt_size;
+    unsigned long initrd_end_pa = virt_to_phys(g_initrd_end);
+    if (fdt_end_pa    < lower_pa) lower_pa = fdt_end_pa;
+    if (initrd_end_pa < lower_pa) lower_pa = initrd_end_pa;
+    if (lower_pa < g_mem_base) lower_pa = g_mem_base;
+    unsigned long start_pa = memory_find_free(lower_pa, g_mem_base + g_mem_size, heap_size, 0x1000);
+    if (start_pa == 0) {
         uart_puts("[Startup] Error: no free region large enough for heap\n");
         while (1) {}
     }
-    memory_reserve(start, heap_size);
-    startup_range((void*)start, (void*)(start + heap_size));
+    memory_reserve(start_pa, heap_size);
+    unsigned long start_va = phys_to_virt(start_pa);
+    startup_range((void*)start_va, (void*)(start_va + heap_size));
     // log_startup_heap(heap_size);
 }
 
