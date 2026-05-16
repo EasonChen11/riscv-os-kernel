@@ -14,6 +14,15 @@
  */
 #define LINEAR_MAP_GIB 4
 
+/* RAM 起點：QEMU virt 從 0x80000000 開始；OrangePi RV2 從 0x0 開始（U-Boot
+ * 把 kernel 載到 PA 0x00200000，DRAM 從 0 起算）。設錯 identity map 蓋不到
+ * kernel 跑的 PA，satp 寫完一寫就 silent。 */
+#ifdef QEMU
+#define RAM_PA 0x80000000UL
+#else
+#define RAM_PA 0x00000000UL
+#endif
+
 static unsigned long __attribute__((aligned(4096))) pgd[ENTRIES_PER_TABLE];
 static unsigned long __attribute__((aligned(4096))) pmd_kern[LINEAR_MAP_GIB][ENTRIES_PER_TABLE];
 static unsigned long __attribute__((aligned(4096))) pmd_mmio_hi[ENTRIES_PER_TABLE];
@@ -22,12 +31,10 @@ unsigned long g_kernel_pgd_pa;
 
 void setup_vm(void)
 {
-    const unsigned long ram_pa = 0x80000000UL;
-
-    /* 1) identity map [ram_pa, ram_pa+4 GiB) using 2 MiB PMD leaves */
-    unsigned long id_pgd_idx = (ram_pa >> PGD_SHIFT) & 0x1ff;
+    /* 1) identity map [RAM_PA, RAM_PA+4 GiB) using 2 MiB PMD leaves */
+    unsigned long id_pgd_idx = (RAM_PA >> PGD_SHIFT) & 0x1ff;
     /* 2) high-VA linear map sharing the same PMD leaves */
-    unsigned long hh_pgd_idx = ((PAGE_OFFSET + ram_pa) >> PGD_SHIFT) & 0x1ff;
+    unsigned long hh_pgd_idx = ((PAGE_OFFSET + RAM_PA) >> PGD_SHIFT) & 0x1ff;
 
     for (int i = 0; i < LINEAR_MAP_GIB; i++) {
         unsigned long pmd_pa = (unsigned long)&pmd_kern[i][0];
@@ -35,18 +42,26 @@ void setup_vm(void)
         pgd[hh_pgd_idx + i] = MAKE_PTE(pmd_pa, PTE_V);
 
         for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
-            unsigned long pa = ram_pa + (unsigned long)i * PGD_SIZE + (unsigned long)j * PMD_SIZE;
+            unsigned long pa = RAM_PA + (unsigned long)i * PGD_SIZE + (unsigned long)j * PMD_SIZE;
             pmd_kern[i][j] = MAKE_PTE(pa, PROT_KERNEL_RWX);
         }
     }
 
-    /* 3) MMIO at high VA only: low 1 GiB linearly mapped, no execute */
+#ifdef QEMU
+    /* 3) QEMU 路徑：MMIO 在低 1 GiB（RAM 在 0x80000000+），單獨一張 PMD 掛 high-VA
+     *    base = PAGE_OFFSET + 0，且設成 no-X 屬性避免 speculative fetch */
     unsigned long mmio_pgd_idx = ((PAGE_OFFSET + 0x0UL) >> PGD_SHIFT) & 0x1ff;
     pgd[mmio_pgd_idx] = MAKE_PTE((unsigned long)&pmd_mmio_hi[0], PTE_V);
     for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
         unsigned long pa = (unsigned long)j * PMD_SIZE;
         pmd_mmio_hi[j] = MAKE_PTE(pa, PROT_MMIO);
     }
+#else
+    /* 板子（OrangePi RV2）：RAM 從 0x0 起，linear map (PGD[256..]) 已蓋住整個
+     * 低 4 GiB，包含 MMIO 區段，所以不需要另一張 pmd_mmio_hi。
+     * 副作用：MMIO 區段拿到 RWX，沒設 no-X，但 bare-metal 沒 speculative 問題。 */
+    (void)pmd_mmio_hi;
+#endif
 
     g_kernel_pgd_pa = (unsigned long)&pgd[0];
 
@@ -57,8 +72,7 @@ void setup_vm(void)
 
 void drop_identity_map(void)
 {
-    const unsigned long ram_pa = 0x80000000UL;
-    unsigned long id_pgd_idx = (ram_pa >> PGD_SHIFT) & 0x1ff;
+    unsigned long id_pgd_idx = (RAM_PA >> PGD_SHIFT) & 0x1ff;
     for (int i = 0; i < LINEAR_MAP_GIB; i++) pgd[id_pgd_idx + i] = 0;
 
     /* After this point we are running at high VA only; remember the PGD's PA
