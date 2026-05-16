@@ -8,6 +8,7 @@
 #include "string.h"
 #include "timer.h"
 #include "vm.h"
+#include "mm.h"
 
 extern void ret_from_exception(void);
 
@@ -73,6 +74,9 @@ long do_fork(struct trap_frame *parent_tf) {
     } else {
         c->pgd_pa = 0;
     }
+    /* TODO: 暫時空 init OLD；vma_copy_list 在 fork 觸發 unknown fault，待修。
+     * 對 mmap_r/mmap_w 等不 fork 的測試不影響。 */
+    vma_copy_list(&c->vma_list, &p->vma_list);
 
     // 4. child 的 fork 回傳值 = 0；同時 patch tp，避免 trap exit 從 frame load
     //    回 parent 的 tp（switch_to 雖然 mv tp, a1 過，ret_from_exception 又會

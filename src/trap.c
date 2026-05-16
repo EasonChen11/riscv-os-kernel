@@ -7,6 +7,7 @@
 #include "schedule.h"
 #include "thread.h"
 #include "signal.h"
+#include "mm.h"
 
 // sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
 // sstatus.SUM (bit 18) 開了 S-mode 才能存取帶 PTE_U=1 的 user 頁；syscall handler
@@ -41,6 +42,9 @@ void do_trap(struct trap_frame *tf) {
             // 之後又被無條件覆寫的順序坑（例如 sigreturn 會整盤覆寫 trap_frame）
             tf->sepc += 4;
             do_syscall(tf);
+        } else if (cause_code == 12 || cause_code == 13 || cause_code == 15) {
+            /* Adv2: 12=inst fetch fault, 13=load fault, 15=store fault */
+            do_page_fault(tf, cause_code, tf->stval);
         } else {
             struct thread *cur = kthread_get_current();
             uart_puts("Unknown exception: scause=");

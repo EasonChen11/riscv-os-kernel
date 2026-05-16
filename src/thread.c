@@ -3,6 +3,7 @@
 #include "dynalloc.h"
 #include "buddy.h"
 #include "proc.h"
+#include "mm.h"
 
 static int next_thread_id = 0;
 struct list_head all_threads;
@@ -36,6 +37,7 @@ struct thread* kthread_create(thread_func_t fn) {
     t->signal_handling = false;
     t->signal_stack    = (void *)0;
     t->pgd_pa          = 0;   /* kernel thread；exec 之後 user thread 才設 */
+    vma_init_list(&t->vma_list);
     enqueue_runqueue(t);
     return t;
 }

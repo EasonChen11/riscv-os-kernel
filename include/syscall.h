@@ -18,6 +18,7 @@ enum {
     SYS_SIGNAL     = 10,
     SYS_SIGRETURN  = 11,
     SYS_KILL       = 12,
+    SYS_MMAP       = 13,
     NR_SYSCALL,
 };
 

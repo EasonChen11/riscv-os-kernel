@@ -6,6 +6,7 @@
 #include "task.h"
 #include "irq.h"
 #include "vm.h"
+#include "mm.h"
 
 static struct list_head runqueue;
 struct list_head zombie_list;          // proc.c 也會 enqueue（waitpid reap、stop）
@@ -41,6 +42,7 @@ void kill_zombies(void) {
         buddy_free_pages(z->kstack);
         if (z->ustack) buddy_free_pages(z->ustack);
         if (z->pgd_pa) free_pgd(z->pgd_pa);   /* lab6: 釋放 user PGD + 走訪所有 leaf page */
+        vma_free_all(&z->vma_list);
         dynalloc_free(z);
     }
     irq_restore(flags);

@@ -18,7 +18,9 @@ struct page_descriptor {
 };
 static struct chunk_pool pools[DA_NUM_POOLS];
 static struct page_descriptor *page_descriptors; // 每個 page 的描述資訊
-static const unsigned int pool_sizes[DA_NUM_POOLS] = {16, 32, 48, 64, 96, 128, 256, 512, 1024, 2048};
+/* pool_sizes 全部選 PAGE_SIZE (4096) 的因數，避免 fill loop 放出跨頁 chunk。
+ * 48 / 96 移除：lab6 起 struct vma 等 48-byte 物件改走 64-byte pool。 */
+static const unsigned int pool_sizes[DA_NUM_POOLS] = {16, 32, 64, 128, 256, 512, 1024, 2048};
 
 // N. Allocating a chunk:
 //     [Chunk] Allocate 0xADDR at chunk size K

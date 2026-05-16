@@ -5,6 +5,7 @@
 #include "proc.h"
 #include "video.h"
 #include "signal.h"
+#include "mm.h"
 
 static long sys_getpid(struct trap_frame *tf) {
     (void)tf;
@@ -82,6 +83,7 @@ void do_syscall(struct trap_frame *tf) {
         case SYS_USLEEP:     ret = sys_usleep(tf);     break;
         case SYS_SIGNAL:     ret = sys_signal(tf);     break;
         case SYS_KILL:       ret = sys_kill(tf);       break;
+        case SYS_MMAP:       ret = sys_mmap_impl(tf);  break;
         // do_sigreturn 已整盤覆寫 *tf（含 a0），不能再走後面的 a0 寫回
         case SYS_SIGRETURN:  do_sigreturn(tf);         return;
         default:             ret = -1;                 break;

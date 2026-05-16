@@ -1,7 +1,7 @@
 #ifndef __DYNALLOC_H__
 #define __DYNALLOC_H__
 
-#define DA_NUM_POOLS 10
+#define DA_NUM_POOLS 8
 #define DA_MAX_CHUNK_SIZE 2048
 
 void dynalloc_init(void);
