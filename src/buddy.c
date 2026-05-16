@@ -171,6 +171,7 @@ void buddy_init(void) {
     for (unsigned long i = 0; i < g_buddy_total_pages; i++) {
         frame_array[i].order = BUDDY_F; // Mark all frames as non-head
         frame_array[i].allocated = 0;
+        frame_array[i].refcnt = 0;
     }
     unsigned long start = 0;
     while (start < g_buddy_total_pages) {
@@ -209,6 +210,7 @@ void *buddy_alloc_pages(int order) {
     }
     target_frame->order = order;
     target_frame->allocated = 1;            // 標記為 allocated 起點
+    target_frame->refcnt = 1;               // Adv3 CoW：起點 1 個 owner
 
     unsigned long index = frame_to_idx(target_frame);
     unsigned long addr = buddy_page_idx_to_addr(index);
@@ -230,6 +232,12 @@ void buddy_free_pages(void *addr) {
     if (!self->allocated) {
         return; // 重複 free 防護：這個 frame 不是 allocated 起點
     }
+    /* Adv3 CoW：refcnt-- 後 > 0 表示還有其他 PGD 共享，先不真正歸還 */
+    if (self->refcnt > 1) {
+        self->refcnt--;
+        return;
+    }
+    self->refcnt = 0;
     self->allocated = 0;
 
     while (order < BUDDY_MAX_ORDER) {
@@ -252,4 +260,16 @@ void buddy_free_pages(void *addr) {
 
     freelist_add(idx_to_frame(index), order);
     // dump_counts();  // 同上：heartbeat 觸發的 task slot free 會撞到，留給 mmtest 手動呼叫用
+}
+/* Adv3 CoW: 多一個 PGD 引用這頁 → refcnt++ */
+void frame_get(void *va) {
+    unsigned long idx = buddy_addr_to_page_idx((unsigned long)va);
+    if (idx >= g_buddy_total_pages) return;
+    frame_array[idx].refcnt++;
+}
+
+unsigned int frame_refcnt(void *va) {
+    unsigned long idx = buddy_addr_to_page_idx((unsigned long)va);
+    if (idx >= g_buddy_total_pages) return 0;
+    return frame_array[idx].refcnt;
 }

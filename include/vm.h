@@ -16,6 +16,10 @@ void          free_pgd(unsigned long pgd_pa);
 void          map_pages(unsigned long pgd_pa, unsigned long va,
                         unsigned long size, unsigned long pa, unsigned long prot);
 void          vm_copy_user(unsigned long dst_pgd_pa, unsigned long src_pgd_pa);
+void          vm_copy_user_cow(unsigned long dst_pgd_pa, unsigned long src_pgd_pa);
+unsigned long vm_lookup_pte(unsigned long pgd_pa, unsigned long va);
+int           vm_set_pte_writable_copy(unsigned long pgd_pa, unsigned long va,
+                                       unsigned long new_pa, unsigned long prot);
 
 /* context switch helper */
 static inline void switch_pgd(unsigned long pgd_pa) {

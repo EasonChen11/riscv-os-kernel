@@ -159,28 +159,56 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
         return;
     }
 
-    /* 落在合法 vma 內。檢查 prot 是否允許此操作；不允許 → CoW (Adv3 處理) 或 segfault */
     int needs_w = (cause == 15);
     int needs_x = (cause == 12);
-    if (needs_w && !(v->pte_prot & PTE_W)) {
-        uart_puts("[Segmentation fault]: Kill Process\n");
-        do_exit(-1);
-        return;
-    }
+    /* exec faulting in NX region 直接 segfault */
     if (needs_x && !(v->pte_prot & PTE_X)) {
         uart_puts("[Segmentation fault]: Kill Process\n");
         do_exit(-1);
         return;
     }
 
-    /* demand paging：配一頁 + zero + map。rst 要求格式 "[Translation fault]: %lx" */
+    unsigned long va_aligned = bad_va & ~(PAGE_SIZE - 1);
+    unsigned long cur_pte = vm_lookup_pte(me->pgd_pa, bad_va);
+
+    /* (1) PTE 存在 + store fault + PTE 沒 W → CoW (Adv3) 或寫只讀 vma */
+    if ((cur_pte & PTE_V) && needs_w && !(cur_pte & PTE_W)) {
+        if (!(v->pte_prot & PTE_W)) {
+            uart_puts("[Segmentation fault]: Kill Process\n");
+            do_exit(-1);
+            return;
+        }
+        uart_puts("[Permission fault]: ");
+        uart_hex(bad_va);
+        uart_puts("\n");
+        unsigned long old_pa = PTE_TO_PA(cur_pte);
+        void *old_va = (void *)phys_to_virt(old_pa);
+        if (frame_refcnt(old_va) == 1) {
+            /* 唯一擁有者 → 放寬 W、不必複製 */
+            vm_set_pte_writable_copy(me->pgd_pa, va_aligned, old_pa, v->pte_prot);
+        } else {
+            void *newp = buddy_alloc_pages(0);
+            memcpy(newp, old_va, PAGE_SIZE);
+            vm_set_pte_writable_copy(me->pgd_pa, va_aligned,
+                                     virt_to_phys((unsigned long)newp), v->pte_prot);
+            buddy_free_pages(old_va);   /* refcnt-- 老頁 */
+        }
+        return;
+    }
+
+    /* (2) store fault 且 vma 沒 W：寫只讀 region */
+    if (needs_w && !(v->pte_prot & PTE_W)) {
+        uart_puts("[Segmentation fault]: Kill Process\n");
+        do_exit(-1);
+        return;
+    }
+
+    /* (3) PTE 不存在 → demand paging */
     uart_puts("[Translation fault]: ");
     uart_hex(bad_va);
     uart_puts("\n");
     void *p = buddy_alloc_pages(0);
     memset(p, 0, PAGE_SIZE);
-    unsigned long va_aligned = bad_va & ~(PAGE_SIZE - 1);
     map_pages(me->pgd_pa, va_aligned, PAGE_SIZE,
               virt_to_phys((unsigned long)p), v->pte_prot);
-    /* sret 後 user 重試該指令 */
 }

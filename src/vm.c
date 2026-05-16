@@ -184,3 +184,96 @@ void vm_copy_user(unsigned long dst_pgd_pa, unsigned long src_pgd_pa)
         walk_src_pmd(dst_pgd_pa, (unsigned long)i << 30, PTE_TO_PA(e));
     }
 }
+
+/* ───────────────────────── Adv3 CoW helpers ───────────────────────── */
+
+/* 在 dst PGD 走相同 VA 路徑，需要時配 PMD/PTE 中介頁；不寫 leaf，回 leaf PTE 槽位址 */
+static unsigned long *get_or_alloc_pte_slot(unsigned long pgd_pa, unsigned long va)
+{
+    unsigned long *pgd_va = (unsigned long *)phys_to_virt(pgd_pa);
+    unsigned long vpn2 = (va >> 30) & 0x1ff;
+    unsigned long vpn1 = (va >> 21) & 0x1ff;
+    unsigned long vpn0 = (va >> 12) & 0x1ff;
+    unsigned long *pmd = walk_or_alloc(pgd_va, vpn2);
+    unsigned long *pte = walk_or_alloc(pmd, vpn1);
+    return &pte[vpn0];
+}
+
+/* fork CoW：複製 src 的 leaf PTE 到 dst，**兩邊**都清 W，refcnt++。
+ * 後續 store fault 透過 vma 判斷 → CoW copy。 */
+static void cow_share_pte(unsigned long dst_pgd_pa, unsigned long va,
+                          unsigned long *src_pte_slot)
+{
+    unsigned long pte_val = *src_pte_slot;
+    unsigned long pa      = PTE_TO_PA(pte_val);
+    unsigned long flags   = PTE_FLAGS(pte_val);
+    /* clear W on both ends；mark soft bit PTE_COW 標示這頁可 CoW upgrade */
+    unsigned long ro_flags = (flags & ~PTE_W) | PTE_COW;
+
+    *src_pte_slot = MAKE_PTE(pa, ro_flags);
+    unsigned long *dst_pte_slot = get_or_alloc_pte_slot(dst_pgd_pa, va);
+    *dst_pte_slot = MAKE_PTE(pa, ro_flags);
+
+    frame_get((void *)phys_to_virt(pa));
+}
+
+static void walk_src_pmd_cow(unsigned long dst_pgd_pa, unsigned long base_va,
+                             unsigned long pmd_pa)
+{
+    unsigned long *pmd = (unsigned long *)phys_to_virt(pmd_pa);
+    for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
+        unsigned long e = pmd[i];
+        if (!(e & PTE_V)) continue;
+        if (e & (PTE_R | PTE_W | PTE_X)) continue;
+        unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(e));
+        for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
+            if (!(pte[j] & PTE_V)) continue;
+            unsigned long va = base_va + ((unsigned long)i << 21) + ((unsigned long)j << 12);
+            cow_share_pte(dst_pgd_pa, va, &pte[j]);
+        }
+    }
+}
+
+void vm_copy_user_cow(unsigned long dst_pgd_pa, unsigned long src_pgd_pa)
+{
+    unsigned long *src_pgd = (unsigned long *)phys_to_virt(src_pgd_pa);
+    for (int i = 0; i < 256; i++) {
+        unsigned long e = src_pgd[i];
+        if (!(e & PTE_V)) continue;
+        if (e & (PTE_R | PTE_W | PTE_X)) continue;
+        walk_src_pmd_cow(dst_pgd_pa, (unsigned long)i << 30, PTE_TO_PA(e));
+    }
+    sfence_vma_all();
+}
+
+/* 查 va 在 pgd 內的 PTE value；不存在回 0 */
+unsigned long vm_lookup_pte(unsigned long pgd_pa, unsigned long va)
+{
+    unsigned long *pgd_va = (unsigned long *)phys_to_virt(pgd_pa);
+    unsigned long vpn2 = (va >> 30) & 0x1ff;
+    unsigned long vpn1 = (va >> 21) & 0x1ff;
+    unsigned long vpn0 = (va >> 12) & 0x1ff;
+    if (!(pgd_va[vpn2] & PTE_V)) return 0;
+    unsigned long *pmd = (unsigned long *)phys_to_virt(PTE_TO_PA(pgd_va[vpn2]));
+    if (!(pmd[vpn1] & PTE_V)) return 0;
+    unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd[vpn1]));
+    return pte[vpn0];
+}
+
+/* CoW store fault：覆寫 va 的 PTE，指向新 PA、加 W、清 PTE_COW。
+ * 回 0 成功、-1 失敗（不該發生）。 */
+int vm_set_pte_writable_copy(unsigned long pgd_pa, unsigned long va,
+                             unsigned long new_pa, unsigned long prot)
+{
+    unsigned long *pgd_va = (unsigned long *)phys_to_virt(pgd_pa);
+    unsigned long vpn2 = (va >> 30) & 0x1ff;
+    unsigned long vpn1 = (va >> 21) & 0x1ff;
+    unsigned long vpn0 = (va >> 12) & 0x1ff;
+    if (!(pgd_va[vpn2] & PTE_V)) return -1;
+    unsigned long *pmd = (unsigned long *)phys_to_virt(PTE_TO_PA(pgd_va[vpn2]));
+    if (!(pmd[vpn1] & PTE_V)) return -1;
+    unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd[vpn1]));
+    pte[vpn0] = MAKE_PTE(new_pa, prot & ~PTE_COW);
+    sfence_vma_all();
+    return 0;
+}

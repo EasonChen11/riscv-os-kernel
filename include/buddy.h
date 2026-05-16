@@ -13,6 +13,7 @@
 struct frame {
     int order;                  // The order of the block (0 for 1 page, 1 for 2 pages, etc.)
     int allocated;              // 0 = free 起點 / 中段; 1 = allocated 起點
+    unsigned int refcnt;        // Adv3 CoW：>1 表示多個 PGD 共享此頁；alloc 設 1，free 是 refcnt--
     struct list_head freelist;  // List node for linking frames in the free list
 };
 
@@ -24,6 +25,14 @@ void *buddy_alloc_pages(int order);
 void buddy_free_pages(void *addr);
 void buddy_register_range(unsigned long base_addr, unsigned long size);
 void buddy_reset_step(void); // 重置 log step 編號為 1，供外部測試腳本在跑前呼叫
+
+/* Adv3 CoW refcount API：
+ *   frame_get(va)  → 共享者多一個，refcnt++（va = buddy 配出的 VA）
+ *   frame_refcnt() → 查目前 refcnt
+ *   buddy_free_pages() 自帶 refcnt--；refcnt==0 才實際歸還。
+ *   一般 alloc 後 refcnt=1，無需手動呼叫 frame_get。 */
+void frame_get(void *va);
+unsigned int frame_refcnt(void *va);
 
 /* g_buddy_base_addr 為 PA；外部 helper 公開 VA。
  * Sv39 啟用後 kernel 一律透過 PAGE_OFFSET 的 linear map 存取頁框，

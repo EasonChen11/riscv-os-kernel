@@ -70,7 +70,9 @@ long do_fork(struct trap_frame *parent_tf) {
     c->ustack = (void *)0;
     if (p->pgd_pa) {
         c->pgd_pa = alloc_pgd();
-        vm_copy_user(c->pgd_pa, p->pgd_pa);
+        /* Adv3：CoW share。parent / child 都改唯讀 + refcnt++，
+         * 第一次 store 才走 do_page_fault → 配新頁 + memcpy。 */
+        vm_copy_user_cow(c->pgd_pa, p->pgd_pa);
     } else {
         c->pgd_pa = 0;
     }
