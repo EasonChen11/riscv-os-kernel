@@ -22,7 +22,7 @@ INC_DIR   = include
 # -Wall            啟用所有編譯器警告，提升程式碼品質。
 # -I$(INC_DIR)     指定標頭檔搜尋路徑，讓 #include "xxx.h" 能找到 include/ 下的檔案。
 
-CFLAGS   = -O2 -march=rv64gc_zifencei -mcmodel=medany -fno-pie -ffreestanding -nostdlib -g -Wall -I$(INC_DIR)
+CFLAGS   = -march=rv64gc_zifencei -mcmodel=medany -fno-pie -ffreestanding -nostdlib -g -Wall -I$(INC_DIR)
 CFLAGS  += -Wno-unused-variable -Wno-unused-function # 忽略未使用的變數和函式警告，因為 kernel 可能有一些暫時未使用的程式碼。
 TARGET   = kernel
 

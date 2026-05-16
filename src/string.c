@@ -40,3 +40,10 @@ void* memcpy(void* dst, const void* src, unsigned long n) {
     while (n--) *d++ = *s++;
     return dst;
 }
+
+void* memset(void* dst, int c, unsigned long n) {
+    unsigned char* d = (unsigned char*)dst;
+    unsigned char v = (unsigned char)c;
+    while (n--) *d++ = v;
+    return dst;
+}

@@ -78,12 +78,12 @@ struct QEMU_PACKED FWCfgDmaAccess {
 static void fw_cfg_dma_transfer(void* address,
                                 uint32_t length,
                                 uint32_t control) {
-    /* QEMU DMA 看 PA：buffer 與 descriptor 都要 virt_to_phys。
-     * access 必須 volatile，否則 -O2 會把 control 欄位讀進 reg 後 cache 住 */
-    volatile struct FWCfgDmaAccess access;
-    access.control = bswap32(control);
-    access.length  = bswap32(length);
-    access.address = bswap64(virt_to_phys((uint64_t)address));
+    /* QEMU DMA 看 PA：buffer 與 descriptor 都要 virt_to_phys */
+    struct FWCfgDmaAccess access = {
+        .control = bswap32(control),
+        .length  = bswap32(length),
+        .address = bswap64(virt_to_phys((uint64_t)address)),
+    };
     *FW_CFG_DMA = bswap64(virt_to_phys((uint64_t)&access));
     while (bswap32(access.control) & ~FW_CFG_DMA_CTL_ERROR)
         ;

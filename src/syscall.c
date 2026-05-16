@@ -68,7 +68,7 @@ static long sys_kill(struct trap_frame *tf) {
 // switch 而非 function pointer table：self-relocation 後 .rodata 內絕對位址不 fix-up
 void do_syscall(struct trap_frame *tf) {
     long nr = (long)tf->a7;
-    long ret;
+    long ret = -1;
     switch (nr) {
         case SYS_GETPID:     ret = sys_getpid(tf);     break;
         case SYS_UART_READ:  ret = sys_uart_read(tf);  break;

@@ -40,6 +40,7 @@ struct thread {
     struct trap_frame   signal_saved_tf;
     void               *signal_stack;
     bool                signal_handling;
+    unsigned long       pgd_pa;        // user process 的 PGD（PA）；kernel thread = 0
 };
 
 extern struct list_head all_threads;

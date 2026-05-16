@@ -7,6 +7,7 @@
 #include "uart.h"
 #include "string.h"
 #include "timer.h"
+#include "vm.h"
 
 extern void ret_from_exception(void);
 
@@ -62,14 +63,15 @@ long do_fork(struct trap_frame *parent_tf) {
     struct trap_frame *child_tf =
         (struct trap_frame *)((unsigned long)c->kstack + off);
 
-    // 3. ustack 複製，修 child 的 user sp（parent sp 在 ustack 內的 offset 不變）
-    if (p->ustack) {
-        c->ustack = buddy_alloc_pages(0);
-        memcpy(c->ustack, p->ustack, PAGE_SIZE);
-        child_tf->sp = (unsigned long)c->ustack
-                     + (parent_tf->sp - (unsigned long)p->ustack);
+    /* 3. lab6：deep-copy user pages via per-process PGD。
+     *    parent / child user VA layout 完全一致，trap_frame.sp 不必修。
+     *    kernel thread (pgd_pa=0) 不分配 user PGD，fork 後仍是 kernel thread。 */
+    c->ustack = (void *)0;
+    if (p->pgd_pa) {
+        c->pgd_pa = alloc_pgd();
+        vm_copy_user(c->pgd_pa, p->pgd_pa);
     } else {
-        c->ustack = (void *)0;
+        c->pgd_pa = 0;
     }
 
     // 4. child 的 fork 回傳值 = 0；同時 patch tp，避免 trap exit 從 frame load

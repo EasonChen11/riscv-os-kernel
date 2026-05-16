@@ -5,6 +5,7 @@
 #include "timer.h"
 #include "task.h"
 #include "irq.h"
+#include "vm.h"
 
 static struct list_head runqueue;
 struct list_head zombie_list;          // proc.c 也會 enqueue（waitpid reap、stop）
@@ -39,6 +40,7 @@ void kill_zombies(void) {
         uart_puts("]\n");
         buddy_free_pages(z->kstack);
         if (z->ustack) buddy_free_pages(z->ustack);
+        if (z->pgd_pa) free_pgd(z->pgd_pa);   /* lab6: 釋放 user PGD + 走訪所有 leaf page */
         dynalloc_free(z);
     }
     irq_restore(flags);
@@ -62,6 +64,13 @@ void schedule(void) {
     if (next == prev) goto out;
 
     switch_to(prev, next);
+    /* switch_to 返回是「我這個 thread 又被 schedule 回來了」的視角；
+     * tp 已是 current=這條 thread，用 it 來決定 satp。kernel thread (pgd_pa=0)
+     * 沿用既有 satp（kernel PGD）；user thread 切到自己的 PGD。*/
+    {
+        struct thread *cur = kthread_get_current();
+        if (cur->pgd_pa) switch_pgd(cur->pgd_pa);
+    }
 out:
     irq_restore(flags);
 }

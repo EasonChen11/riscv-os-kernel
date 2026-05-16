@@ -9,8 +9,10 @@
 #include "signal.h"
 
 // sstatus.SIE (bit 1) 是 S-mode 所有中斷的全域開關；關掉後即使 sie.X=1 也不會觸發
+// sstatus.SUM (bit 18) 開了 S-mode 才能存取帶 PTE_U=1 的 user 頁；syscall handler
+// 要直接讀 user buffer (uart_write/uart_read) 必須開，否則 load_page_fault tval=user VA
 void trap_init(void) {
-    asm volatile("csrrs zero, sstatus, %0" :: "r"(1 << 1));
+    asm volatile("csrrs zero, sstatus, %0" :: "r"((1UL << 1) | (1UL << 18)));
 }
 
 /* Called from handle_exception (assembly) with the saved trap frame. */
