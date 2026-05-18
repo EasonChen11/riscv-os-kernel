@@ -3,7 +3,6 @@
 #include "cpio.h"
 #include "string.h"
 #include "bootinfo.h"
-#include "bootloader.h"
 #include "buddy.h"
 #include "dynalloc.h"
 #include "trap.h"
@@ -26,7 +25,6 @@ static void cmd_help(void) {
     uart_puts("  info       - print system info.\n");
     uart_puts("  ls         - list initrd files.\n");
     uart_puts("  cat        - print file content. usage: cat <filename>\n");
-    uart_puts("  load       - load kernel image via UART.\n");
     uart_puts("  mmtest     - run buddy allocator test.\n");
     uart_puts("  exec       - execute user program. usage: exec <filename>\n");
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
@@ -113,10 +111,6 @@ static void cmd_info(void) {
     bootinfo_print();
 }
 
-static void cmd_load(void) {
-    bootloader_load_kernel();
-}
-
 // 解析 "setTimeout SEC MESSAGE"，MESSAGE 允許含空白。
 static void cmd_setTimeout(const char* args) {
     while (*args == ' ') args++;
@@ -158,8 +152,6 @@ static void exec_cmd(const char* cmd) {
         initrd_list(g_initrd_base);
     } else if (strncmp(cmd, "cat ", 4) == 0) {
         initrd_cat(g_initrd_base, cmd + 4);
-    } else if (strcmp(cmd, "load") == 0) {
-        cmd_load();
     } else if (strcmp(cmd, "mmtest") == 0) {
         cmd_mmtest();
     } else if (strncmp(cmd, "exec ", 5) == 0) {
