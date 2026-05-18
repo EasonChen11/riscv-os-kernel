@@ -73,12 +73,18 @@ watch:
 load:
 	sudo python3 send.py $(PTS) $(KERNEL)
 
+# build_board：板子版 FIT 內嵌 cpio（從 $(DIR)/initramfs.cpio 取）
+# 切 lab：make build_board DIR=../lab5
 build_board: LDSCRIPT = link_board.ld
 build_board: ITSFILE  = bootloader_board.its
-build_board: clean $(TARGET).fit
+build_board: clean bootloader_board.its $(TARGET).fit
+
+# 由 .in template 替換 @INITRD@ 產生最終 .its
+bootloader_board.its: bootloader_board.its.in
+	sed 's|@INITRD@|$(INITRD)|g' $< > $@
 
 clean:
-	rm -f $(TARGET) $(TARGET).fit
+	rm -f $(TARGET) $(TARGET).fit bootloader_board.its
 	rm -rf $(BUILD_DIR)
 
 .PHONY: build build_board clean run run_stdio watch load
