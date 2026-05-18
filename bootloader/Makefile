@@ -61,7 +61,7 @@ bootloader_board.its: bootloader_board.its.in
 # 切 lab：DIR=../labN（kernel / cpio 兩者都從 $(DIR) 取）
 # 退出 QEMU：另開 terminal `pkill -f qemu-system-riscv64`
 run: LDSCRIPT = link.ld
-run: ITSFILE  = bootloader.its
+run: ITSFILE  = bootloader_qemu.its
 run: CFLAGS  += -DQEMU
 run: clean $(TARGET).fit
 	@echo "──────────────────────────────────────────────────────"
@@ -73,7 +73,7 @@ run: clean $(TARGET).fit
 
 # run_stdio：互動 stdio 模式，只觀察輸出時用（無法 binary 上傳）
 run_stdio: LDSCRIPT = link.ld
-run_stdio: ITSFILE  = bootloader.its
+run_stdio: ITSFILE  = bootloader_qemu.its
 run_stdio: CFLAGS  += -DQEMU
 run_stdio: clean $(TARGET).fit
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd $(INITRD) -nographic

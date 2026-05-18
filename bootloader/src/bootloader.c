@@ -149,7 +149,7 @@ void bootloader_main(unsigned long hartid, const void *dtb)
     bootinfo_init(dtb);
     uart_init(dtb);
 
-    uart_puts("bootloader: 等待資訊...\n");
+    uart_puts("bootloader initialized...\n");
     uart_puts("  mem_base = "); uart_hex(g_mem_base); uart_puts("\n");
     uart_puts("  mem_size = "); uart_hex(g_mem_size); uart_puts("\n");
     uart_puts("  reloc_pc = "); uart_hex((unsigned long)&bootloader_main); uart_puts("\n");
