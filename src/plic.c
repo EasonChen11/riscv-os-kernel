@@ -42,12 +42,6 @@ void plic_init(const void *fdt, unsigned long hartid) {
 
     REG32(PLIC_THRESHOLD(plic_ctx)) = 0;  // threshold=0：所有 priority>0 的都接受
     asm volatile("csrrs zero, sie, %0" :: "r"(1 << 9)); // sie.SEIE
-    
-    // uart_puts("[plic] base=");
-    // uart_hex(plic_base);
-    // uart_puts(" ctx=");
-    // uart_int(plic_ctx);
-    // uart_puts("\n");
 }
 
 void plic_enable_irq(unsigned int irq, unsigned int priority) {
