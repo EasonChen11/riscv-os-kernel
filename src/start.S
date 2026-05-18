@@ -1,4 +1,6 @@
 /*
+ * Note: labels here omit the `.L` prefix so they remain visible in the symbol table for objdump/nm.
+ *
  * Lab6 boot path (QEMU virt, OpenSBI hand-off at S-mode, PC = PA 0x80200000):
  *   1. clear BSS via low-PA  (objcopy -O binary 不含 NOBITS sections，
  *                              BSS 必須在 setup_vm 用 pgd[]/pmd_*[] 前歸零)
@@ -23,22 +25,22 @@ _start:
      * loader 載入的記憶體位元值是 DRAM 殘餘，pgd[] 開機若是 garbage MMU 立刻爛掉 */
     la      t0, __bss_start
     la      t1, __bss_stop
-    bge     t0, t1, 1f
-0:
+    bge     t0, t1, bss_done
+bss_loop:
     sd      zero, 0(t0)
     addi    t0, t0, 8
-    blt     t0, t1, 0b
-1:
+    blt     t0, t1, bss_loop
+bss_done:
     call    setup_vm                /* MMU on：identity 暫時保留供我們跳到高半 VA */
 
-    /* la 是 PC-relative；此刻 PC 仍在低 PA，la t0, 2f 得低 PA → 加 PAGE_OFFSET = 高 VA */
-    la      t0, 2f
+    /* la 是 PC-relative；此刻 PC 仍在低 PA，la t0, high_half 得低 PA → 加 PAGE_OFFSET = 高 VA */
+    la      t0, high_half
     li      t1, 0xffffffc000000000
     add     t0, t0, t1
     jr      t0
 
 .align 2
-2:
+high_half:
     la      sp, _end                /* 現在 la 給高 VA */
 
     li      t1, 0xffffffc000000000
