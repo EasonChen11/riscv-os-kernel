@@ -84,10 +84,68 @@ unsigned long bootloader_find_reloc_addr(const void *fdt, unsigned long kernel_s
 
 extern char _end[];
 
+#ifdef QEMU
+#define KERNEL_ADDR 0x80200000UL
+#else
+#define KERNEL_ADDR 0x00200000UL
+#endif
+
+#define BOOT_MAGIC  0x544F4F42UL    /* "BOOT" little-endian */
+
+typedef void (*kernel_func_t)(unsigned long, const void *);
+
+static void halt(void)
+{
+    for (;;)
+        asm volatile("wfi");
+}
+
+/* UART 收 8-byte header (magic + size, LE)，讀 size bytes 到 KERNEL_ADDR，跳轉 */
+void bootloader_load_kernel(unsigned long hartid, const void *dtb)
+{
+    if (KERNEL_ADDR < g_mem_base || KERNEL_ADDR >= g_mem_base + g_mem_size) {
+        uart_puts("Error: KERNEL_ADDR out of memory range\n");
+        halt();
+    }
+
+    uart_puts("Kernel will be loaded to "); uart_hex(KERNEL_ADDR); uart_puts("\n");
+
+    unsigned char hdr[8];
+    for (int i = 0; i < 8; i++)
+        hdr[i] = uart_getb();
+
+    unsigned int magic = (unsigned int)hdr[0]
+                       | ((unsigned int)hdr[1] << 8)
+                       | ((unsigned int)hdr[2] << 16)
+                       | ((unsigned int)hdr[3] << 24);
+    unsigned int size  = (unsigned int)hdr[4]
+                       | ((unsigned int)hdr[5] << 8)
+                       | ((unsigned int)hdr[6] << 16)
+                       | ((unsigned int)hdr[7] << 24);
+
+    if (magic != BOOT_MAGIC) {
+        uart_puts("Error: invalid magic ("); uart_hex(magic); uart_puts(")\n");
+        halt();
+    }
+
+    uart_puts("Receiving "); uart_hex(size); uart_puts(" bytes...\n");
+
+    unsigned char *dst = (unsigned char *)KERNEL_ADDR;
+    for (unsigned int i = 0; i < size; i++)
+        dst[i] = uart_getb();
+
+    uart_puts("Kernel loaded. Jumping...\n");
+
+    asm volatile("fence.i");
+
+    kernel_func_t entry = (kernel_func_t)KERNEL_ADDR;
+    entry(hartid, dtb);
+
+    halt();   /* 不會回來，保險 */
+}
+
 void bootloader_main(unsigned long hartid, const void *dtb)
 {
-    (void)hartid;
-
     bootinfo_init(dtb);
     uart_init(dtb);
 
@@ -95,8 +153,6 @@ void bootloader_main(unsigned long hartid, const void *dtb)
     uart_puts("  mem_base = "); uart_hex(g_mem_base); uart_puts("\n");
     uart_puts("  mem_size = "); uart_hex(g_mem_size); uart_puts("\n");
     uart_puts("  reloc_pc = "); uart_hex((unsigned long)&bootloader_main); uart_puts("\n");
-    uart_puts("  _end     = "); uart_hex((unsigned long)_end); uart_puts("\n");
 
-    for (;;)
-        asm volatile("wfi");
+    bootloader_load_kernel(hartid, dtb);
 }
