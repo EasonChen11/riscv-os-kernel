@@ -82,7 +82,10 @@ void exec_umode(const char *path) {
     }
     struct thread *me = kthread_get_current();
 
-    if (me->pgd_pa) free_pgd(me->pgd_pa);
+    /* 先存舊 PGD 等切換完再 free；否則舊 PGD 那一頁回到 buddy 後
+     * 可能被 alloc_pgd / load_user_image 拿去當新 frame 寫壞，但 satp 仍指它，TLB miss 就爛 */
+    unsigned long old_pgd = me->pgd_pa;
+
     me->pgd_pa = alloc_pgd();
     me->is_kernel = false;
     vma_free_all(&me->vma_list);   /* exec 換 image 也丟掉舊 mmap 區段 */
@@ -102,6 +105,9 @@ void exec_umode(const char *path) {
     sstatus |=  (1UL << 5);    /* SPIE=1 */
 
     switch_pgd(me->pgd_pa);    /* kernel half 已 clone，安全 */
+
+    /* satp 已指向新 PGD，舊 PGD 可以安全釋放 */
+    if (old_pgd) free_pgd(old_pgd);
 
     __asm__ volatile("csrw sscratch, %0" :: "r"(kstack_top));
     __asm__ volatile("csrw sstatus,  %0" :: "r"(sstatus));
@@ -139,7 +145,11 @@ long do_exec(const char *path, struct trap_frame *tf) {
     int image_size = 0;
     if (cpio_lookup(path, &image_src, &image_size) < 0) return -1;
 
-    if (me->pgd_pa) free_pgd(me->pgd_pa);
+    /* 同 exec_umode：先建新 PGD 再 switch，最後才 free 舊的；
+     * 否則舊 PGD 的 frame 一旦被 buddy 重新發出去寫壞，當前 satp 還指它，
+     * 任何 TLB miss 都會走到被覆寫的 page table → page fault / hang */
+    unsigned long old_pgd = me->pgd_pa;
+
     me->pgd_pa = alloc_pgd();
     me->is_kernel = false;
     vma_free_all(&me->vma_list);   /* exec 換 image 也丟掉舊 mmap 區段 */
@@ -154,5 +164,7 @@ long do_exec(const char *path, struct trap_frame *tf) {
     tf->sstatus |=  (1UL << 5);   /* SPIE=1 */
 
     switch_pgd(me->pgd_pa);
+
+    if (old_pgd) free_pgd(old_pgd);
     return 0;
 }
