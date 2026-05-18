@@ -80,7 +80,7 @@ run_stdio: clean $(TARGET).fit
 	# 退出 QEMU：Ctrl-A X
 
 watch:
-	@echo "watching $(PTS); 退出：Ctrl-A k"
+	@echo "watching $(PTS); exit: Ctrl-A k"
 	screen $(PTS)
 
 load:
