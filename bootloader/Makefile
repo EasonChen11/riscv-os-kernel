@@ -42,8 +42,8 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 # run: 用 pty 模式跑 QEMU，方便另一個 terminal 用 send.py 上傳 kernel。
 #      QEMU 啟動時會印 "char device redirected to /dev/pts/N"，
 #      接著另開一個 terminal：
-#        make watch PTS=/dev/pts/N     # 看 UART 輸出
-#        make load  PTS=/dev/pts/N KERNEL=../lab6/kernel
+#        make watch PTS=/dev/pts/N                       # screen 看 UART 輸出
+#        make load  PTS=/dev/pts/N KERNEL=../lab6/kernel # sudo 跑 send.py
 #      退出 QEMU：另開 terminal `pkill -f qemu-system-riscv64`
 PTS    ?= /dev/pts/1
 KERNEL ?= ../lab6/kernel
@@ -64,11 +64,11 @@ run_stdio: build
 	# 退出 QEMU：Ctrl-A X
 
 watch:
-	@echo "watching $(PTS); Ctrl-C to stop"
-	cat $(PTS)
+	@echo "watching $(PTS); 退出：Ctrl-A k"
+	screen $(PTS)
 
 load:
-	python3 send.py $(PTS) $(KERNEL)
+	sudo python3 send.py $(PTS) $(KERNEL)
 
 build_board: LDSCRIPT = link_board.ld
 build_board: ITSFILE  = bootloader_board.its
