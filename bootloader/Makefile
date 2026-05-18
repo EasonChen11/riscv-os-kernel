@@ -39,10 +39,36 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# run: 用 pty 模式跑 QEMU，方便另一個 terminal 用 send.py 上傳 kernel。
+#      QEMU 啟動時會印 "char device redirected to /dev/pts/N"，
+#      接著另開一個 terminal：
+#        make watch PTS=/dev/pts/N     # 看 UART 輸出
+#        make load  PTS=/dev/pts/N KERNEL=../lab6/kernel
+#      退出 QEMU：另開 terminal `pkill -f qemu-system-riscv64`
+PTS    ?= /dev/pts/1
+KERNEL ?= ../lab6/kernel
+
 run: CFLAGS += -DQEMU
 run: build
+	@echo "──────────────────────────────────────────────────────"
+	@echo "  QEMU starting in pty mode. Look for /dev/pts/N below."
+	@echo "  Watch UART:  make watch PTS=/dev/pts/N"
+	@echo "  Upload:      make load  PTS=/dev/pts/N KERNEL=../lab6/kernel"
+	@echo "──────────────────────────────────────────────────────"
+	$(QEMU) -M virt -m 256M -kernel $(TARGET) -display none -serial pty
+
+# 互動模式（stdio 直連 UART）：只觀察 bootloader 輸出時用；無法 binary 上傳
+run_stdio: CFLAGS += -DQEMU
+run_stdio: build
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -nographic
 	# 退出 QEMU：Ctrl-A X
+
+watch:
+	@echo "watching $(PTS); Ctrl-C to stop"
+	cat $(PTS)
+
+load:
+	python3 send.py $(PTS) $(KERNEL)
 
 build_board: LDSCRIPT = link_board.ld
 build_board: ITSFILE  = bootloader_board.its
@@ -52,4 +78,4 @@ clean:
 	rm -f $(TARGET) $(TARGET).fit
 	rm -rf $(BUILD_DIR)
 
-.PHONY: build build_board clean run
+.PHONY: build build_board clean run run_stdio watch load
