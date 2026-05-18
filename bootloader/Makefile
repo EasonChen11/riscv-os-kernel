@@ -42,19 +42,21 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 # run: 用 pty 模式跑 QEMU，方便另一個 terminal 用 send.py 上傳 kernel。
 #      QEMU 啟動時會印 "char device redirected to /dev/pts/N"，
 #      接著另開一個 terminal：
-#        make watch PTS=/dev/pts/N                       # screen 看 UART 輸出
-#        make load  PTS=/dev/pts/N KERNEL=../lab6/kernel # sudo 跑 send.py
+#        make watch PTS=/dev/pts/N                 # screen 看 UART 輸出
+#        make load  PTS=/dev/pts/N DIR=../lab6     # sudo 跑 send.py
+#      切換不同 lab：DIR=../labN（kernel/initramfs.cpio 兩者都從 $(DIR) 取）
 #      退出 QEMU：另開 terminal `pkill -f qemu-system-riscv64`
-PTS     ?= /dev/pts/4
-KERNEL  ?= ../lab6/kernel
-INITRD  ?= ../lab6/initramfs.cpio
+PTS    ?= /dev/pts/4
+DIR    ?= ../lab6
+KERNEL ?= $(DIR)/kernel
+INITRD ?= $(DIR)/initramfs.cpio
 
 run: CFLAGS += -DQEMU
 run: build
 	@echo "──────────────────────────────────────────────────────"
 	@echo "  QEMU starting in pty mode. Look for /dev/pts/N below."
 	@echo "  Watch UART:  make watch PTS=/dev/pts/N"
-	@echo "  Upload:      make load  PTS=/dev/pts/N KERNEL=../lab6/kernel"
+	@echo "  Upload:      make load  PTS=/dev/pts/N DIR=../lab6"
 	@echo "──────────────────────────────────────────────────────"
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd $(INITRD) -display none -serial pty
 
