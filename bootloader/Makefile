@@ -45,8 +45,9 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 #        make watch PTS=/dev/pts/N                       # screen 看 UART 輸出
 #        make load  PTS=/dev/pts/N KERNEL=../lab6/kernel # sudo 跑 send.py
 #      退出 QEMU：另開 terminal `pkill -f qemu-system-riscv64`
-PTS    ?= /dev/pts/1
-KERNEL ?= ../lab6/kernel
+PTS     ?= /dev/pts/4
+KERNEL  ?= ../lab6/kernel
+INITRD  ?= ../lab6/initramfs.cpio
 
 run: CFLAGS += -DQEMU
 run: build
@@ -55,12 +56,12 @@ run: build
 	@echo "  Watch UART:  make watch PTS=/dev/pts/N"
 	@echo "  Upload:      make load  PTS=/dev/pts/N KERNEL=../lab6/kernel"
 	@echo "──────────────────────────────────────────────────────"
-	$(QEMU) -M virt -m 256M -kernel $(TARGET) -display none -serial pty
+	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd $(INITRD) -display none -serial pty
 
 # 互動模式（stdio 直連 UART）：只觀察 bootloader 輸出時用；無法 binary 上傳
 run_stdio: CFLAGS += -DQEMU
 run_stdio: build
-	$(QEMU) -M virt -m 256M -kernel $(TARGET) -nographic
+	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd $(INITRD) -nographic
 	# 退出 QEMU：Ctrl-A X
 
 watch:
