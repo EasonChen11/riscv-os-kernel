@@ -13,13 +13,13 @@
 #include "dynalloc.h"
 
 /* lab6 rst：user image @ VA 0x0、user stack top @ 0x4000000000
- * stack vma 預留 16MB；只 eager map top page，其餘交給 do_page_fault demand */
+ * exec 只配/註冊 top 1 page；sp 往下踩出去由 do_page_fault 的 expand-stack 動態擴 vma */
 #define USER_STACK_TOP      0x4000000000UL
-#define USER_STACK_BASE_VA  0x3f00000000UL   /* 16MB stack region；只 eager map top page */
 #define USER_STACK_TOP_PAGE (USER_STACK_TOP - PAGE_SIZE)
+#define USER_STACK_BASE_VA  USER_STACK_TOP_PAGE
 
-static void vma_add_simple(struct list_head *head, unsigned long start,
-                           unsigned long end, unsigned long pte_prot) {
+static struct vma *vma_add_simple(struct list_head *head, unsigned long start,
+                                  unsigned long end, unsigned long pte_prot) {
     struct vma *v = dynalloc_alloc(sizeof(*v));
     v->start    = start;
     v->end      = end;
@@ -27,6 +27,7 @@ static void vma_add_simple(struct list_head *head, unsigned long start,
     v->flags    = MAP_ANONYMOUS | MAP_POPULATE;
     init_list_head(&v->link);
     list_add_tail(&v->link, head);   /* head 為空時等同插在最前 */
+    return v;
 }
 
 static int cpio_lookup(const char *path, const void **out_image, int *out_size) {
@@ -69,7 +70,8 @@ static void map_user_stack(unsigned long pgd_pa)
 static void register_image_vma(struct thread *me, int image_size) {
     unsigned long img_end = (image_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     vma_add_simple(&me->vma_list, 0x0UL, img_end, PROT_USER_RWX);
-    vma_add_simple(&me->vma_list, USER_STACK_BASE_VA, USER_STACK_TOP, PROT_USER_RW);
+    me->stack_vma = vma_add_simple(&me->vma_list, USER_STACK_BASE_VA,
+                                   USER_STACK_TOP, PROT_USER_RW);
 }
 
 /* shell exec：當前 kernel thread 第一次跳 U-mode。手動 csr 配置 + sret。 */
@@ -91,6 +93,7 @@ void exec_umode(const char *path) {
     me->pgd_pa = alloc_pgd();
     me->is_kernel = false;
     vma_free_all(&me->vma_list);   /* exec 換 image 也丟掉舊 mmap 區段 */
+    me->stack_vma = (struct vma *)0;
 
     load_user_image(me->pgd_pa, image_src, image_size);
     map_user_stack(me->pgd_pa);
@@ -155,6 +158,7 @@ long do_exec(const char *path, struct trap_frame *tf) {
     me->pgd_pa = alloc_pgd();
     me->is_kernel = false;
     vma_free_all(&me->vma_list);   /* exec 換 image 也丟掉舊 mmap 區段 */
+    me->stack_vma = (struct vma *)0;
 
     load_user_image(me->pgd_pa, image_src, image_size);
     map_user_stack(me->pgd_pa);

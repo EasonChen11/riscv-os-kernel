@@ -148,11 +148,34 @@ static struct vma *vma_lookup(struct thread *me, unsigned long va) {
     return (void *)0;
 }
 
+/* user stack 動態擴張上限：總長度不超過 8 MB（仿 Linux 預設 RLIMIT_STACK）；
+ * 同時 fault va 須緊鄰目前 vma 下緣 1 MB 內，避免 wild pointer 被誤判成 stack-grow。 */
+#define STACK_RLIMIT          (8UL  * 1024 * 1024)
+#define STACK_GROWSDOWN_GAP   (1UL  * 1024 * 1024)
+
+/* 嘗試把 me->stack_vma 往下擴到包含 bad_va。成功回傳 stack vma，失敗 NULL。
+ * 條件：(a) 有 stack_vma 且 va 落在它下方；(b) 與目前 vma 下緣的距離未超過 GAP；
+ * (c) 擴張後總長度未超過 RLIMIT。 */
+static struct vma *try_expand_stack(struct thread *me, unsigned long bad_va) {
+    struct vma *sv = me->stack_vma;
+    if (!sv) return (void *)0;
+    if (bad_va >= sv->start) return (void *)0;
+    unsigned long gap = sv->start - bad_va;
+    if (gap > STACK_GROWSDOWN_GAP) return (void *)0;
+    unsigned long new_start = bad_va & ~(PAGE_SIZE - 1);
+    if (sv->end - new_start > STACK_RLIMIT) return (void *)0;
+    sv->start = new_start;
+    return sv;
+}
+
 /* fault cause 12 = inst fetch, 13 = load, 15 = store/AMO */
 void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad_va) {
     struct thread *me = kthread_get_current();
     struct vma *v = vma_lookup(me, bad_va);
 
+    if (!v) {
+        v = try_expand_stack(me, bad_va);
+    }
     if (!v) {
         uart_puts("[Segmentation fault]: Kill Process\n");
         do_exit(-1);

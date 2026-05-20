@@ -6,6 +6,8 @@
 #include "trap.h"
 #include "signal.h"
 
+struct vma;
+
 #define KSTACK_SIZE (1 << 12) // 4KB kernel stack per thread
 
 typedef void (*thread_func_t)(void);
@@ -42,6 +44,7 @@ struct thread {
     bool                signal_handling;
     unsigned long       pgd_pa;        // user process 的 PGD（PA）；kernel thread = 0
     struct list_head    vma_list;      // mmap 區段，按 start 升冪
+    struct vma         *stack_vma;     // 指向 vma_list 中的 user stack vma（fault 內動態擴張用）
 };
 
 extern struct list_head all_threads;

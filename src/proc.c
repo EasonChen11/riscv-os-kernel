@@ -77,6 +77,17 @@ long do_fork(struct trap_frame *parent_tf) {
         c->pgd_pa = 0;
     }
     vma_copy_list(&c->vma_list, &p->vma_list);
+    /* vma_copy_list 給 child 新配 vma node，parent 那顆 stack_vma pointer 不再有效；
+     * 走 child vma_list 找 end 同 parent stack_vma 那顆對位回來。 */
+    c->stack_vma = (struct vma *)0;
+    if (p->stack_vma) {
+        struct list_head *q = c->vma_list.next;
+        while (q != &c->vma_list) {
+            struct vma *cv = list_entry(q, struct vma, link);
+            if (cv->end == p->stack_vma->end) { c->stack_vma = cv; break; }
+            q = q->next;
+        }
+    }
 
     // 4. child 的 fork 回傳值 = 0；同時 patch tp，避免 trap exit 從 frame load
     //    回 parent 的 tp（switch_to 雖然 mv tp, a1 過，ret_from_exception 又會
