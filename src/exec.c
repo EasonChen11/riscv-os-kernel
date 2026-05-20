@@ -12,9 +12,11 @@
 #include "mm.h"
 #include "dynalloc.h"
 
-/* lab6 rst：user image @ VA 0x0、user stack top @ 0x4000000000、stack 1 page */
+/* lab6 rst：user image @ VA 0x0、user stack top @ 0x4000000000
+ * stack vma 預留 16MB；只 eager map top page，其餘交給 do_page_fault demand */
 #define USER_STACK_TOP      0x4000000000UL
-#define USER_STACK_BASE_VA  0x3ffffff000UL
+#define USER_STACK_BASE_VA  0x3f00000000UL   /* 16MB stack region；只 eager map top page */
+#define USER_STACK_TOP_PAGE (USER_STACK_TOP - PAGE_SIZE)
 
 static void vma_add_simple(struct list_head *head, unsigned long start,
                            unsigned long end, unsigned long pte_prot) {
@@ -58,7 +60,7 @@ static void map_user_stack(unsigned long pgd_pa)
 {
     void *s = buddy_alloc_pages(0);
     memset(s, 0, PAGE_SIZE);
-    map_pages(pgd_pa, USER_STACK_BASE_VA, PAGE_SIZE,
+    map_pages(pgd_pa, USER_STACK_TOP_PAGE, PAGE_SIZE,
               virt_to_phys((unsigned long)s), PROT_USER_RW);
 }
 
