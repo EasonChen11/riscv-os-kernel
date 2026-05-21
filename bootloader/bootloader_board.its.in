@@ -22,12 +22,21 @@
             compression = "none";
             load = <0x0 0x46100000>;
         };
+        fdt {
+            description = "Flat Device Tree";
+            data = /incbin/("x1_orangepi-rv2.dtb");
+            type = "flat_dt";
+            arch = "riscv";
+            compression = "none";
+            load = <0x0 0x31000000>;
+        };
     };
     configurations {
         default = "config-1";
         config-1 {
             description = "OSC Bootloader (board, with embedded cpio)";
             kernel = "kernel";
+            fdt = "fdt";
             ramdisk = "ramdisk";
         };
     };

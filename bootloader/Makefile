@@ -28,7 +28,8 @@ ITSFILE  ?= bootloader_board.its
 DIR    ?= ../lab6
 KERNEL ?= $(DIR)/kernel
 INITRD ?= $(DIR)/initramfs.cpio
-PTS    ?= /dev/pts/4
+PTS    ?= /dev/ttyUSB0
+qemu_PTS ?= /dev/pts/4
 
 # build (預設) = 板子版：產生 bootloader_board.its（從 .in template）後 mkimage
 build: clean bootloader_board.its $(TARGET).fit
@@ -85,6 +86,9 @@ watch:
 
 load:
 	sudo python3 send.py $(PTS) $(KERNEL)
+
+qemu_load:
+	sudo python3 send.py $(qemu_PTS) $(KERNEL)
 
 clean:
 	rm -f $(TARGET) $(TARGET).fit bootloader_board.its
