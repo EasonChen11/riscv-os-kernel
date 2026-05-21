@@ -17,14 +17,6 @@ struct setTimeout_ctx {
 static unsigned long boot_time = 0;
 static unsigned long CPU_FREQ = 10000000;
 
-// heartbeat 輸出開關：1=quiet（cb 仍跑、不印字）、0=verbose（每 2 秒印 boot time）。
-// volatile：可能由 shell thread 寫、heartbeat_cb 讀，跨 context 須避免編譯器 cache 到暫存器。
-static volatile int heartbeat_quiet = 1; // 預設 quiet，shell 可 toggle 開關
-
-int toggle_heartbeat(void) {
-    heartbeat_quiet = !heartbeat_quiet;
-    return heartbeat_quiet;
-}
 
 // ─── 動態 pool（size 由 timer_init 決定，storage 從 dynalloc 取） ──────
 static struct timer_event *pool;
@@ -168,18 +160,6 @@ void setTimeout(int sec, const char* msg) {
     uart_puts("\"\n");
 }
 
-// Heartbeat：每 2 秒自我重排；輸出依 heartbeat_quiet 決定。
-static void heartbeat_cb(void* arg) {
-    (void)arg;
-    if (!heartbeat_quiet) {
-        unsigned long now;
-        asm volatile("rdtime %0" : "=r"(now));
-        uart_puts("boot time: ");
-        uart_int((now - boot_time) / CPU_FREQ);
-        uart_putc('\n');
-    }
-    add_timer(heartbeat_cb, 0, 2);   // 不論 quiet 與否都重排，保持節拍
-}
 
 // 由 trap 在 scause=STI 時呼叫。硬體進 trap 已關 SIE，這裡不需再 irq_save。
 // 所有 callback 統一延後到 task context (SIE=1)，ISR 本身只做 pop + enqueue + free event。
@@ -213,6 +193,5 @@ void timer_init(void) {
         pool[i].in_use = 0;
 
     asm volatile("csrrs zero, sie, %0" :: "r"(1UL << 5));   // sie.STIE 開啟
-    // add_task(heartbeat_cb, 0, PRIO_LOW);   // 用標準排程進入 queue                                                         
-    drain_tasks();                          // 立刻吐（init 是 thread context，drain 可重入）
+    drain_tasks();
 }
