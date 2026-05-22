@@ -8,6 +8,8 @@
 // 動態 UART base / reg-shift（uart_init 從 DTB 填入）
 extern unsigned long uart_base;
 extern unsigned long uart_shift;   // 0 for 16550A(QEMU), 2 for DW/SiFive UART (4-byte stride)
+extern unsigned long uart_pa;      // 原始 PA（mmio_finalize 走 PTE level 用）
+extern unsigned long uart_size;    // FDT 第二格
 
 enum UART_REG {
     RBR = 0,  // Receiver Buffer Register (read-only), spec: 16.3.4.1

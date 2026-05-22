@@ -7,12 +7,21 @@
  * Boot-time page tables. With medany model + higher-half link, `&pgd[0]` is
  * PC-relative: it yields the runtime address (low PA pre-MMU, high VA post-MMU).
  *
- *   pgd            - root page-global directory
- *   pmd_kern[i]    - PMD for the i-th GiB of [ram_pa, ram_pa+4 GiB), shared by
- *                    the identity map and the higher-half linear map
- *   pmd_mmio_hi    - PMD covering the low 1 GiB at high-VA (UART/PLIC/FB)
+ *   pgd          - root page-global directory
+ *   pmd_kern[i]  - PMD for the i-th GiB of [ram_pa, ram_pa+4 GiB), shared by
+ *                  the identity map and the higher-half linear map
+ *
+ * MMIO 不在這裡處理，由 mmio_finalize() 後續用 4 KiB PTE 接手（lab6.rst:
+ * Finer Granularity Paging）。
  */
 #define LINEAR_MAP_GIB 4
+
+/* mmio_finalize 用的靜態 PTE table pool：跑得比 buddy 早，buddy 還沒上線。
+ * 一張 4 KiB 對應一個 2 MiB PMD slot；UART 1 張、PLIC 視 size 而定 (QEMU 6 MiB = 3 張)。
+ * 8 張 = 16 MiB MMIO 視窗上限，含板子也綽綽有餘。 */
+#define MMIO_PTE_POOL_SZ 8
+static unsigned long __attribute__((aligned(4096))) mmio_pte_pool[MMIO_PTE_POOL_SZ][ENTRIES_PER_TABLE];
+static int mmio_pte_used = 0;
 
 /* RAM 起點：QEMU virt 從 0x80000000 開始；OrangePi RV2 從 0x0 開始（U-Boot
  * 把 kernel 載到 PA 0x00200000，DRAM 從 0 起算）。設錯 identity map 蓋不到
@@ -25,7 +34,6 @@
 
 static unsigned long __attribute__((aligned(4096))) pgd[ENTRIES_PER_TABLE];
 static unsigned long __attribute__((aligned(4096))) pmd_kern[LINEAR_MAP_GIB][ENTRIES_PER_TABLE];
-static unsigned long __attribute__((aligned(4096))) pmd_mmio_hi[ENTRIES_PER_TABLE];
 
 unsigned long g_kernel_pgd_pa;
 
@@ -47,21 +55,7 @@ void setup_vm(void)
         }
     }
 
-#ifdef QEMU
-    /* 3) QEMU 路徑：MMIO 在低 1 GiB（RAM 在 0x80000000+），單獨一張 PMD 掛 high-VA
-     *    base = PAGE_OFFSET + 0，且設成 no-X 屬性避免 speculative fetch */
-    unsigned long mmio_pgd_idx = ((PAGE_OFFSET + 0x0UL) >> PGD_SHIFT) & 0x1ff;
-    pgd[mmio_pgd_idx] = MAKE_PTE((unsigned long)&pmd_mmio_hi[0], PTE_V);
-    for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
-        unsigned long pa = (unsigned long)j * PMD_SIZE;
-        pmd_mmio_hi[j] = MAKE_PTE(pa, PROT_MMIO);
-    }
-#else
-    /* 板子（OrangePi RV2）：RAM 從 0x0 起，linear map (PGD[256..]) 已蓋住整個
-     * 低 4 GiB，包含 MMIO 區段，所以不需要另一張 pmd_mmio_hi。
-     * 副作用：MMIO 區段拿到 RWX，沒設 no-X，但 bare-metal 沒 speculative 問題。 */
-    (void)pmd_mmio_hi;
-#endif
+    /* MMIO 留給 mmio_finalize 走 4 KiB PTE 處理；此處只負責 RAM。 */
 
     g_kernel_pgd_pa = (unsigned long)&pgd[0];
 
@@ -80,6 +74,73 @@ void drop_identity_map(void)
     g_kernel_pgd_pa = (unsigned long)&pgd[0] - PAGE_OFFSET;
 
     asm volatile("sfence.vma zero, zero" ::: "memory");
+}
+
+/* 從靜態 pool 配一張 PTE table，pre-zero。pool 用完直接 panic-loop（boot 期不該發生）。 */
+static unsigned long *mmio_alloc_pte_table(void)
+{
+    if (mmio_pte_used >= MMIO_PTE_POOL_SZ) {
+        while (1) asm volatile("wfi");   /* boot 期靜默：UART 此刻可能還沒接通 */
+    }
+    unsigned long *t = mmio_pte_pool[mmio_pte_used++];
+    for (int i = 0; i < ENTRIES_PER_TABLE; i++) t[i] = 0;
+    return t;
+}
+
+/* 把 [va, va+size) 一頁頁映到 [pa, pa+size)，PMD slot 用靜態 pool 的 PTE table。
+ * 若 PMD slot 原本是 2 MiB leaf（板子 pmd_kern 的情形），直接覆蓋成 non-leaf 指向新 PTE table。
+ * 注意 identity map 已被 drop_identity_map 清掉，所有 PA 都要先 phys_to_virt 才能 deref。
+ * 靜態 pool 的位址是 high-VA（BSS），寫進 PTE 前要 virt_to_phys。 */
+static void mmio_map_4k(unsigned long va, unsigned long pa, unsigned long size, unsigned long prot)
+{
+    for (unsigned long off = 0; off < size; off += PAGE_SIZE) {
+        unsigned long v = va + off;
+        unsigned long p = pa + off;
+        unsigned long vpn2 = (v >> PGD_SHIFT) & 0x1ff;
+        unsigned long vpn1 = (v >> PMD_SHIFT) & 0x1ff;
+        unsigned long vpn0 = (v >> PTE_SHIFT) & 0x1ff;
+
+        /* PGD entry：必為 non-leaf 指向 PMD。setup_vm 已替 high-VA RAM 段配好 pmd_kern；
+         * 對於 QEMU 低 1 GiB high-VA（PAGE_OFFSET + 0..1 GiB）setup_vm 沒配，須在此補。 */
+        if (!(pgd[vpn2] & PTE_V)) {
+            unsigned long *new_pmd = mmio_alloc_pte_table();   /* 同 pool 配空 PMD 也合用 */
+            pgd[vpn2] = MAKE_PTE(virt_to_phys((unsigned long)new_pmd), PTE_V);
+        }
+        unsigned long *pmd = (unsigned long *)phys_to_virt(PTE_TO_PA(pgd[vpn2]));
+
+        /* PMD entry：若是 2 MiB leaf 或尚未配，重設為 non-leaf 指向新 PTE table。
+         * 用 leaf 判斷：有 R/W/X 任一者 = leaf。 */
+        unsigned long pmd_e = pmd[vpn1];
+        int needs_new_pte = !(pmd_e & PTE_V) || (pmd_e & (PTE_R | PTE_W | PTE_X));
+        if (needs_new_pte) {
+            unsigned long *new_pte = mmio_alloc_pte_table();
+            pmd[vpn1] = MAKE_PTE(virt_to_phys((unsigned long)new_pte), PTE_V);
+        }
+        unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd[vpn1]));
+
+        pte[vpn0] = MAKE_PTE(p, prot);
+    }
+}
+
+void mmio_finalize(unsigned long uart_pa, unsigned long uart_size,
+                   unsigned long plic_pa, unsigned long plic_size)
+{
+    unsigned long u_va = phys_to_virt(uart_pa);
+    unsigned long p_va = phys_to_virt(plic_pa);
+    unsigned long u_sz = (uart_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    unsigned long p_sz = (plic_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    mmio_map_4k(u_va, uart_pa, u_sz, PROT_MMIO);
+    mmio_map_4k(p_va, plic_pa, p_sz, PROT_MMIO);
+
+#ifdef QEMU
+    /* QEMU fw_cfg @ 0x10100000，被 video_init 用來註冊 ramfb；硬編碼，DTB 沒列 reg。
+     * 一頁就夠（selector/data port + DMA reg）。 */
+    unsigned long fw_pa = 0x10100000UL;
+    mmio_map_4k(phys_to_virt(fw_pa), fw_pa, PAGE_SIZE, PROT_MMIO);
+#endif
+
+    sfence_vma_all();
 }
 
 /* per-process PGD: 配一頁、把 kernel half (idx 256..511) 從 kernel PGD copy 過去。

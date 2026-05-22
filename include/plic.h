@@ -1,9 +1,16 @@
 #ifndef PLIC_H
 #define PLIC_H
 
-// 初始化：從 DTB 解出 PLIC base、依 hartid 算 S-mode context、
-// 清 threshold（全收）。必須在 plic_enable_irq 之前呼叫。
+// 從 DTB 解出的原始 PLIC PA + size（mmio_finalize 走 PTE level 用）
+extern unsigned long plic_pa;
+extern unsigned long plic_size;
+
+// FDT 解析：取出 plic_pa/plic_size/plic_base、依 hartid 算 S-mode context。
+// 純記憶體操作，不碰 MMIO；必須早於 mmio_finalize 呼叫。
 void plic_init(const void *fdt, unsigned long hartid);
+
+// MMIO 啟用：寫 PLIC threshold + 開 sie.SEIE。必須在 mmio_finalize 之後呼叫。
+void plic_enable(void);
 
 // 設定某個 IRQ 的優先權並在當前 context 的 enable bitmap 中開啟它。
 // priority=0 代表關閉，>0 為啟用。

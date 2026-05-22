@@ -8,6 +8,7 @@
 #include "timer.h"
 #include "plic.h"
 #include "trap.h"
+#include "vm.h"
 #include "task.h"
 #include "schedule.h"
 #include "exec.h"
@@ -31,8 +32,15 @@ static void foo(void) {
 }
 
 void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_addr) {
-    // Phase 0: 只解 DTB 與暫存器位址，此階段不可呼叫 uart_puts（interrupt 模式下 ring 尚無 drainer）
-    uart_init(fdt);
+    // Phase 0a: 純 FDT 解析，取 UART/PLIC PA + size，本階段不可碰 MMIO（PTE 尚未建）
+    uart_init(fdt);                // 解 /soc/serial(uart)；填 uart_pa/uart_size
+    plic_init(fdt, hart_id);       // 解 /soc/plic；填 plic_pa/plic_size、算 plic_ctx
+
+    /* Phase 0b: 為 UART/PLIC 建 4 KiB PTE 映射（lab6.rst Finer Granularity Paging）。
+     * 此前 high-VA → MMIO 完全沒映射，任何 uart_puts/PLIC 寫都會 fault。 */
+    mmio_finalize(uart_pa, uart_size, plic_pa, plic_size);
+
+    // Phase 0c: 現在 MMIO 可用，補做 boot 期其它初始化（uart_puts 可在 error 路徑印錯誤）
     bootinfo_init(fdt, reloc_addr);
 
     /* For intterupt:
@@ -40,7 +48,7 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     kernel 自我搬遷使 .data 靜態 self-pointing 失效，必須 runtime init_list_head。 */
     task_init();              // init_list_head(&task_list) + task_init 的其他初始化
     trap_init();              // 開 sstatus.SIE
-    plic_init(fdt, hart_id);  // 設 PLIC base / threshold / sie.SEIE
+    plic_enable();            // PLIC MMIO write threshold + sie.SEIE（必須在 mmio_finalize 後）
     uart_irq_init();          // 設 UART IER/MCR/FCR + PLIC enable；interrupt 路徑就緒
 
     // 從這裡開始 uart_puts 可用（interrupt 模式下由 UART ISR drain TX ring）

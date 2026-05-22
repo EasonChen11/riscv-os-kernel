@@ -12,6 +12,8 @@
 // Context 編號：S-mode = 2*hartid + 1（見 DTS interrupts-extended 陣列順序）
 
 static unsigned long plic_base = 0;
+unsigned long plic_pa   = 0;   // raw PA from FDT；mmio_finalize 走 4 KiB PTE 用
+unsigned long plic_size = 0;
 static int plic_ctx = 1;  // 預設 hart0 S-mode
 
 #define REG32(addr) (*(volatile unsigned int *)(addr)) // volatile 告訴編譯器這個記憶體位置可能會被硬體或其他程式改變，不要對它做優化或假設，確保每次讀寫都直接對記憶體操作
@@ -22,6 +24,8 @@ static int plic_ctx = 1;  // 預設 hart0 S-mode
 #define PLIC_THRESHOLD(ctx)    (plic_base + 0x200000UL + 0x1000UL * (ctx)) // context S-Mode 差 0x1000
 #define PLIC_CLAIM(ctx)        (plic_base + 0x200004UL + 0x1000UL * (ctx)) // context S-Mode 差 0x1000
 
+/* 只解 FDT 取 plic_pa/plic_size/plic_base，不碰任何 MMIO；
+ * 必須早於 mmio_finalize 呼叫，因為它需要 plic_pa/plic_size 來建 PTE。 */
 void plic_init(const void *fdt, unsigned long hartid) {
     // 兩塊板子節點名稱不同：QEMU 用 plic@、RV2 用 interrupt-controller@
     int node = fdt_path_offset(fdt, "/soc/plic");
@@ -36,10 +40,14 @@ void plic_init(const void *fdt, unsigned long hartid) {
         uart_puts("[plic] reg parse failed\n");
         return;
     }
+    plic_pa   = plic_base;
+    plic_size = size;
     plic_base = phys_to_virt(plic_base);   /* MMIO 透過 high-VA linear map 存取 */
+    plic_ctx  = 2 * (int)hartid + 1;       // hart_id S-mode context
+}
 
-    plic_ctx = 2 * (int)hartid + 1;  // hart_id S-mode context
-
+/* MMIO 寫入 + 開 sie.SEIE：必須在 mmio_finalize 後才能跑（否則 MMIO 寫會 fault）。 */
+void plic_enable(void) {
     REG32(PLIC_THRESHOLD(plic_ctx)) = 0;  // threshold=0：所有 priority>0 的都接受
     asm volatile("csrrs zero, sie, %0" :: "r"(1 << 9)); // sie.SEIE
 }

@@ -7,6 +7,11 @@
 void setup_vm(void);
 void drop_identity_map(void);
 
+/* FDT 解析完後呼叫：把 setup_vm 留下的 2 MiB MMIO blanket 替換成
+ * 4 KiB PTE-level 精準映射，只覆蓋 UART/PLIC 真實視窗。 */
+void mmio_finalize(unsigned long uart_pa, unsigned long uart_size,
+                   unsigned long plic_pa, unsigned long plic_size);
+
 /* kernel PGD physical address (for alloc_pgd to clone high-half entries) */
 extern unsigned long g_kernel_pgd_pa;
 
