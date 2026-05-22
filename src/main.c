@@ -32,27 +32,17 @@ static void foo(void) {
 }
 
 void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_addr) {
-    // Phase 0a: 純 FDT 解析，取 UART/PLIC PA + size，本階段不可碰 MMIO（PTE 尚未建）
+    /* Phase 0: 純 FDT 解析 + 純記憶體操作，全程不可寫 MMIO（PTE 尚未建）。
+     * bootinfo_init 在 error 路徑有 uart_puts，但 QEMU/U-Boot 的 FDT 合法不會走。 */
     uart_init(fdt);                // 解 /soc/serial(uart)；填 uart_pa/uart_size
     plic_init(fdt, hart_id);       // 解 /soc/plic；填 plic_pa/plic_size、算 plic_ctx
-
-    /* Phase 0b: 為 UART/PLIC 建 4 KiB PTE 映射（lab6.rst Finer Granularity Paging）。
-     * 此前 high-VA → MMIO 完全沒映射，任何 uart_puts/PLIC 寫都會 fault。 */
-    mmio_finalize(uart_pa, uart_size, plic_pa, plic_size);
-
-    // Phase 0c: 現在 MMIO 可用，補做 boot 期其它初始化（uart_puts 可在 error 路徑印錯誤）
     bootinfo_init(fdt, reloc_addr);
 
     /* For intterupt:
     task_init 必須先於 trap_init：do_trap 結尾會呼叫 drain_tasks，
     kernel 自我搬遷使 .data 靜態 self-pointing 失效，必須 runtime init_list_head。 */
     task_init();              // init_list_head(&task_list) + task_init 的其他初始化
-    trap_init();              // 開 sstatus.SIE
-    plic_enable();            // PLIC MMIO write threshold + sie.SEIE（必須在 mmio_finalize 後）
-    uart_irq_init();          // 設 UART IER/MCR/FCR + PLIC enable；interrupt 路徑就緒
-
-    // 從這裡開始 uart_puts 可用（interrupt 模式下由 UART ISR drain TX ring）
-    uart_init_print_info();
+    trap_init();              // 開 sstatus.SIE（仍無 IRQ source enabled）
 
     // Phase 1: 登記所有 reserved 區段。memory_reserve 只把區間 push 到靜態陣列，不依賴任何 allocator
     // OpenSBI 的區段不能硬編碼，若板子 /reserved-memory 有列就由 memory_reserve_fdt_reserved_mem 處理；
@@ -78,6 +68,17 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 4: 交棒 buddy / dynalloc，它們會從 startup heap 動態拿 frame_array / page_descriptors
     buddy_init();
     dynalloc_init();
+
+    /* Phase 5: MMIO 4 KiB PTE 上線（lab6.rst Finer Granularity Paging）。
+     * 必須 buddy_init 之後（map_pages 需要 buddy 配 PMD/PTE table），
+     * plic_enable 之前（PLIC 第一次 MMIO 寫），不需要 irq_save 因為 IRQ source 還沒 enable。 */
+    mmio_finalize(uart_pa, uart_size, plic_pa, plic_size);
+
+    plic_enable();            // PLIC MMIO write threshold + sie.SEIE
+    uart_irq_init();          // 設 UART IER/MCR/FCR + PLIC enable；interrupt 路徑就緒
+
+    // 從這裡開始 uart_puts 可用（interrupt 模式下由 UART ISR drain TX ring）
+    uart_init_print_info();
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
