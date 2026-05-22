@@ -65,6 +65,8 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     memory_reserve_fdt_reserved_mem(fdt);                                                 // /reserved-memory 子節點
 
     // Phase 2: 告訴 buddy 可用 RAM 範圍（只設 runtime 變數、還不配任何 metadata）
+    // 先截到 linear map 範圍內，超出的尾段 buddy 配出來會無法 phys_to_virt。
+    g_mem_size = vm_clamp_ram_size(g_mem_base, g_mem_size);
     buddy_register_range(g_mem_base, g_mem_size);
 
     // Phase 3: 依 total_pages 精算 heap size（frame_array + page_descriptors + slack），掃 reserved 列表找首塊可用空洞初始化

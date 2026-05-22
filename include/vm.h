@@ -12,6 +12,10 @@ void drop_identity_map(void);
 void mmio_finalize(unsigned long uart_pa, unsigned long uart_size,
                    unsigned long plic_pa, unsigned long plic_size);
 
+/* buddy_register_range 前呼叫：把 RAM 範圍截到 linear map 蓋得到的長度，
+ * 避免 buddy 配出超出 linear map 的 frame。 */
+unsigned long vm_clamp_ram_size(unsigned long base, unsigned long size);
+
 /* kernel PGD physical address (for alloc_pgd to clone high-half entries) */
 extern unsigned long g_kernel_pgd_pa;
 

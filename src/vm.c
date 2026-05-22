@@ -14,7 +14,7 @@
  * MMIO 不在這裡處理，由 mmio_finalize() 後續用 4 KiB PTE 接手（lab6.rst:
  * Finer Granularity Paging）。
  */
-#define LINEAR_MAP_GIB 4
+#define LINEAR_MAP_GIB 2
 
 /* mmio_finalize 用的靜態 PTE table pool：跑得比 buddy 早，buddy 還沒上線。
  * 一張 4 KiB 對應一個 2 MiB PMD slot；UART 1 張、PLIC 視 size 而定 (QEMU 6 MiB = 3 張)。
@@ -120,6 +120,18 @@ static void mmio_map_4k(unsigned long va, unsigned long pa, unsigned long size, 
 
         pte[vpn0] = MAKE_PTE(p, prot);
     }
+}
+
+/* 把 (base, size) 截到 linear map [RAM_PA, RAM_PA + LINEAR_MAP_GIB*1 GiB) 內。
+ * buddy 之後配的所有 frame 透過 phys_to_virt 取址，超出 linear map 的尾段會 fault，
+ * 故在交給 buddy 前需先 clamp。回傳截過的 size；base 本身不動（假設一定在範圍內）。 */
+unsigned long vm_clamp_ram_size(unsigned long base, unsigned long size)
+{
+    unsigned long linear_end = RAM_PA + (unsigned long)LINEAR_MAP_GIB * (1UL << 30);
+    if (base + size > linear_end) {
+        return linear_end - base;
+    }
+    return size;
 }
 
 void mmio_finalize(unsigned long uart_pa, unsigned long uart_size,
