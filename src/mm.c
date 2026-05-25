@@ -24,22 +24,22 @@ void vma_init_list(struct list_head *head) {
 
 void vma_free_all(struct list_head *head) {
     while (!list_empty(head)) {
-        struct vma *v = list_entry(head->next, struct vma, link);
-        list_del(&v->link);
-        dynalloc_free(v);
+        struct vma *vma = list_entry(head->next, struct vma, link);
+        list_del(&vma->link);
+        dynalloc_free(vma);
     }
 }
 
 void vma_copy_list(struct list_head *dst, struct list_head *src) {
     init_list_head(dst);
-    struct list_head *p = src->next;
-    while (p != src) {
-        struct vma *src_v = list_entry(p, struct vma, link);
-        struct vma *cp = dynalloc_alloc(sizeof(*cp));
-        *cp = *src_v;
-        init_list_head(&cp->link);
-        list_add_tail(&cp->link, dst);
-        p = p->next;
+    struct list_head *node = src->next;
+    while (node != src) {
+        struct vma *src_v = list_entry(node, struct vma, link);
+        struct vma *new_vma = dynalloc_alloc(sizeof(*new_vma));
+        *new_vma = *src_v;
+        init_list_head(&new_vma->link);
+        list_add_tail(&new_vma->link, dst);
+        node = node->next;
     }
 }
 
@@ -48,39 +48,39 @@ static unsigned long vma_find_free(struct thread *me, unsigned long length) {
     unsigned long candidate = MMAP_AREA_BASE;
     while (candidate + length <= MMAP_AREA_END) {
         int conflict = 0;
-        struct list_head *p = me->vma_list.next;
-        while (p != &me->vma_list) {
-            struct vma *v = list_entry(p, struct vma, link);
-            if (regions_overlap(candidate, candidate + length, v->start, v->end)) {
-                candidate = round_up_page(v->end);
+        struct list_head *node = me->vma_list.next;
+        while (node != &me->vma_list) {
+            struct vma *vma = list_entry(node, struct vma, link);
+            if (regions_overlap(candidate, candidate + length, vma->start, vma->end)) {
+                candidate = round_up_page(vma->end);
                 conflict = 1;
                 break;
             }
-            p = p->next;
+            node = node->next;
         }
         if (!conflict) return candidate;
     }
     return 0;
 }
 
-static int vma_any_overlap(struct thread *me, unsigned long s, unsigned long e) {
-    struct list_head *p = me->vma_list.next;
-    while (p != &me->vma_list) {
-        struct vma *v = list_entry(p, struct vma, link);
-        if (regions_overlap(s, e, v->start, v->end)) return 1;
-        p = p->next;
+static int vma_any_overlap(struct thread *me, unsigned long start, unsigned long end) {
+    struct list_head *node = me->vma_list.next;
+    while (node != &me->vma_list) {
+        struct vma *vma = list_entry(node, struct vma, link);
+        if (regions_overlap(start, end, vma->start, vma->end)) return 1;
+        node = node->next;
     }
     return 0;
 }
 
 static void vma_insert_sorted(struct thread *me, struct vma *nv) {
-    struct list_head *p = me->vma_list.next;
-    while (p != &me->vma_list) {
-        struct vma *v = list_entry(p, struct vma, link);
-        if (v->start > nv->start) break;
-        p = p->next;
+    struct list_head *node = me->vma_list.next;
+    while (node != &me->vma_list) {
+        struct vma *vma = list_entry(node, struct vma, link);
+        if (vma->start > nv->start) break;
+        node = node->next;
     }
-    list_add_tail(&nv->link, p);
+    list_add_tail(&nv->link, node);
 }
 
 /* mmap(addr, length, prot, flags)
@@ -100,13 +100,13 @@ long sys_mmap_impl(struct trap_frame *tf) {
 
     /* 1) 決定起始 VA */
     unsigned long start;
-    unsigned long h = (unsigned long)hint;
+    unsigned long hint_va = (unsigned long)hint;
     if (hint == (void *)0) {
         start = vma_find_free(me, length);
-    } else if ((h & (PAGE_SIZE - 1)) || vma_any_overlap(me, h, h + length)) {
+    } else if ((hint_va & (PAGE_SIZE - 1)) || vma_any_overlap(me, hint_va, hint_va + length)) {
         start = vma_find_free(me, length);   /* hint 不合法 → fallback */
     } else {
-        start = h;
+        start = hint_va;
     }
     if (start == 0) return -1;
 
@@ -117,26 +117,26 @@ long sys_mmap_impl(struct trap_frame *tf) {
     if (prot & PROT_EXEC)  pte_prot |= PTE_X;
 
     /* 3) 建立 vma 並插入 list */
-    struct vma *v = dynalloc_alloc(sizeof(*v));
-    v->start    = start;
-    v->end      = start + length;
-    v->pte_prot = pte_prot;
-    v->flags    = flags;
-    init_list_head(&v->link);
-    vma_insert_sorted(me, v);
+    struct vma *vma = dynalloc_alloc(sizeof(*vma));
+    vma->start    = start;
+    vma->end      = start + length;
+    vma->pte_prot = pte_prot;
+    vma->flags    = flags;
+    init_list_head(&vma->link);
+    vma_insert_sorted(me, vma);
 
     /* 4) MAP_POPULATE：立即配 frame + map。否則留給 demand paging (Adv2) */
     if (flags & MAP_POPULATE) {
         for (unsigned long va = start; va < start + length; va += PAGE_SIZE) {
-            void *p = buddy_alloc_pages(0);
-            if (!p) {
-                list_del(&v->link);
-                dynalloc_free(v);
+            void *frame = buddy_alloc_pages(0);
+            if (!frame) {
+                list_del(&vma->link);
+                dynalloc_free(vma);
                 return -1;
             }
-            memset(p, 0, PAGE_SIZE);
+            memset(frame, 0, PAGE_SIZE);
             map_pages(me->pgd_pa, va, PAGE_SIZE,
-                      virt_to_phys((unsigned long)p), pte_prot);
+                      virt_to_phys((unsigned long)frame), pte_prot);
         }
     }
     return (long)start;
@@ -144,11 +144,11 @@ long sys_mmap_impl(struct trap_frame *tf) {
 
 /* Adv2: 查 va 落在哪個 vma；找不到回 NULL */
 static struct vma *vma_lookup(struct thread *me, unsigned long va) {
-    struct list_head *p = me->vma_list.next;
-    while (p != &me->vma_list) {
-        struct vma *v = list_entry(p, struct vma, link);
-        if (va >= v->start && va < v->end) return v;
-        p = p->next;
+    struct list_head *node = me->vma_list.next;
+    while (node != &me->vma_list) {
+        struct vma *vma = list_entry(node, struct vma, link);
+        if (va >= vma->start && va < vma->end) return vma;
+        node = node->next;
     }
     return (void *)0;
 }
@@ -176,12 +176,12 @@ static struct vma *try_expand_stack(struct thread *me, unsigned long bad_va) {
 /* fault cause 12 = inst fetch, 13 = load, 15 = store/AMO */
 void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad_va) {
     struct thread *me = kthread_get_current();
-    struct vma *v = vma_lookup(me, bad_va);
+    struct vma *vma = vma_lookup(me, bad_va);
 
-    if (!v) {
-        v = try_expand_stack(me, bad_va);
+    if (!vma) {
+        vma = try_expand_stack(me, bad_va);
     }
-    if (!v) {
+    if (!vma) {
         uart_puts("[Segmentation fault]: Kill Process\n");
         do_exit(-1);
         return;
@@ -190,7 +190,7 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
     int needs_w = (cause == 15);
     int needs_x = (cause == 12);
     /* exec faulting in NX region 直接 segfault */
-    if (needs_x && !(v->pte_prot & PTE_X)) {
+    if (needs_x && !(vma->pte_prot & PTE_X)) {
         uart_puts("[Segmentation fault]: Kill Process\n");
         do_exit(-1);
         return;
@@ -201,7 +201,7 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
 
     /* (1) PTE 存在 + store fault + PTE 沒 W → CoW (Adv3) 或寫只讀 vma */
     if ((cur_pte & PTE_V) && needs_w && !(cur_pte & PTE_W)) {
-        if (!(v->pte_prot & PTE_W)) {
+        if (!(vma->pte_prot & PTE_W)) {
             uart_puts("[Segmentation fault]: Kill Process\n");
             do_exit(-1);
             return;
@@ -213,19 +213,19 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
         void *old_va = (void *)phys_to_virt(old_pa);
         if (frame_refcnt(old_va) == 1) {
             /* 唯一擁有者 → 放寬 W、不必複製 */
-            vm_set_pte_writable_copy(me->pgd_pa, va_aligned, old_pa, v->pte_prot);
+            vm_set_pte_writable_copy(me->pgd_pa, va_aligned, old_pa, vma->pte_prot);
         } else {
             void *newp = buddy_alloc_pages(0);
             memcpy(newp, old_va, PAGE_SIZE);
             vm_set_pte_writable_copy(me->pgd_pa, va_aligned,
-                                     virt_to_phys((unsigned long)newp), v->pte_prot);
+                                     virt_to_phys((unsigned long)newp), vma->pte_prot);
             buddy_free_pages(old_va);   /* refcnt-- 老頁 */
         }
         return;
     }
 
     /* (2) store fault 且 vma 沒 W：寫只讀 region */
-    if (needs_w && !(v->pte_prot & PTE_W)) {
+    if (needs_w && !(vma->pte_prot & PTE_W)) {
         uart_puts("[Segmentation fault]: Kill Process\n");
         do_exit(-1);
         return;
@@ -235,8 +235,8 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
     uart_puts("[Translation fault]: ");
     uart_hex(bad_va);
     uart_puts("\n");
-    void *p = buddy_alloc_pages(0);
-    memset(p, 0, PAGE_SIZE);
+    void *frame = buddy_alloc_pages(0);
+    memset(frame, 0, PAGE_SIZE);
     map_pages(me->pgd_pa, va_aligned, PAGE_SIZE,
-              virt_to_phys((unsigned long)p), v->pte_prot);
+              virt_to_phys((unsigned long)frame), vma->pte_prot);
 }

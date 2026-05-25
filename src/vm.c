@@ -195,10 +195,10 @@ static void walk_src_pmd(unsigned long dst_pgd_pa, unsigned long base_va, unsign
 {
     unsigned long *pmd = (unsigned long *)phys_to_virt(pmd_pa);
     for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
-        unsigned long e = pmd[i];
-        if (!(e & PTE_V)) continue;
-        if (e & (PTE_R | PTE_W | PTE_X)) continue; /* huge page; lab6 user 不會 */
-        unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(e));
+        unsigned long pmd_ent = pmd[i];
+        if (!(pmd_ent & PTE_V)) continue;
+        if (pmd_ent & (PTE_R | PTE_W | PTE_X)) continue; /* huge page; lab6 user 不會 */
+        unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd_ent));
         for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
             unsigned long pte_val = pte[j];
             if (!(pte_val & PTE_V)) continue;
@@ -212,10 +212,10 @@ void vm_copy_user(unsigned long dst_pgd_pa, unsigned long src_pgd_pa)
 {
     unsigned long *src_pgd = (unsigned long *)phys_to_virt(src_pgd_pa);
     for (int i = 0; i < 256; i++) {
-        unsigned long e = src_pgd[i];
-        if (!(e & PTE_V)) continue;
-        if (e & (PTE_R | PTE_W | PTE_X)) continue;
-        walk_src_pmd(dst_pgd_pa, (unsigned long)i << 30, PTE_TO_PA(e));
+        unsigned long pgd_ent = src_pgd[i];
+        if (!(pgd_ent & PTE_V)) continue;
+        if (pgd_ent & (PTE_R | PTE_W | PTE_X)) continue;
+        walk_src_pmd(dst_pgd_pa, (unsigned long)i << 30, PTE_TO_PA(pgd_ent));
     }
 }
 
@@ -256,10 +256,10 @@ static void walk_src_pmd_cow(unsigned long dst_pgd_pa, unsigned long base_va,
 {
     unsigned long *pmd = (unsigned long *)phys_to_virt(pmd_pa);
     for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
-        unsigned long e = pmd[i];
-        if (!(e & PTE_V)) continue;
-        if (e & (PTE_R | PTE_W | PTE_X)) continue;
-        unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(e));
+        unsigned long pmd_ent = pmd[i];
+        if (!(pmd_ent & PTE_V)) continue;
+        if (pmd_ent & (PTE_R | PTE_W | PTE_X)) continue;
+        unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd_ent));
         for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
             if (!(pte[j] & PTE_V)) continue;
             unsigned long va = base_va + ((unsigned long)i << 21) + ((unsigned long)j << 12);
@@ -272,10 +272,10 @@ void vm_copy_user_cow(unsigned long dst_pgd_pa, unsigned long src_pgd_pa)
 {
     unsigned long *src_pgd = (unsigned long *)phys_to_virt(src_pgd_pa);
     for (int i = 0; i < 256; i++) {
-        unsigned long e = src_pgd[i];
-        if (!(e & PTE_V)) continue;
-        if (e & (PTE_R | PTE_W | PTE_X)) continue;
-        walk_src_pmd_cow(dst_pgd_pa, (unsigned long)i << 30, PTE_TO_PA(e));
+        unsigned long pgd_ent = src_pgd[i];
+        if (!(pgd_ent & PTE_V)) continue;
+        if (pgd_ent & (PTE_R | PTE_W | PTE_X)) continue;
+        walk_src_pmd_cow(dst_pgd_pa, (unsigned long)i << 30, PTE_TO_PA(pgd_ent));
     }
     sfence_vma_all();
 }

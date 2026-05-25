@@ -14,23 +14,23 @@ extern void ret_from_exception(void);
 
 // pid → thread；ZOMBIE 視為「已不存在」直接跳過，避免 stop/kill 對 reaping 中的目標下手
 struct thread *find_pid(int pid) {
-    struct list_head *p = all_threads.next;
-    while (p != &all_threads) {
-        struct thread *t = list_entry(p, struct thread, all_link);
+    struct list_head *node = all_threads.next;
+    while (node != &all_threads) {
+        struct thread *t = list_entry(node, struct thread, all_link);
         if (t->pid == pid && t->state != THREAD_ZOMBIE) return t;
-        p = p->next;
+        node = node->next;
     }
     return (void *)0;
 }
 
 // pid=-1 表示 reap 任意 child；找到的 child 必定 state == ZOMBIE
 static struct thread *find_zombie_child(struct thread *parent, long pid) {
-    struct list_head *p = parent->children.next;
-    while (p != &parent->children) {
-        struct thread *c = list_entry(p, struct thread, child_link);
-        if (c->state == THREAD_ZOMBIE && (pid == -1 || c->pid == pid))
-            return c;
-        p = p->next;
+    struct list_head *node = parent->children.next;
+    while (node != &parent->children) {
+        struct thread *child = list_entry(node, struct thread, child_link);
+        if (child->state == THREAD_ZOMBIE && (pid == -1 || child->pid == pid))
+            return child;
+        node = node->next;
     }
     return (void *)0;
 }
@@ -38,84 +38,84 @@ static struct thread *find_zombie_child(struct thread *parent, long pid) {
 // fork：parent 拿到 child pid，child 從 ret_from_exception 醒來看到 a0=0
 // 沒 MMU 也沒 COW：實打實複製 kstack + ustack 各一個 page
 long do_fork(struct trap_frame *parent_tf) {
-    struct thread *p = kthread_get_current();
-    struct thread *c = dynalloc_alloc(sizeof(*c));
+    struct thread *parent = kthread_get_current();
+    struct thread *child = dynalloc_alloc(sizeof(*child));
 
-    *c = *p;                                    // 淺拷貝大部分欄位（pid 等下面覆寫）
-    c->pid   = alloc_pid();
-    c->ppid  = p->pid;
-    c->state = THREAD_RUNNING;
-    c->wait_pid = -1;
-    init_list_head(&c->rq_link);
-    init_list_head(&c->child_link);
-    init_list_head(&c->children);
+    *child = *parent;                                    // 淺拷貝大部分欄位（pid 等下面覆寫）
+    child->pid   = alloc_pid();
+    child->ppid  = parent->pid;
+    child->state = THREAD_RUNNING;
+    child->wait_pid = -1;
+    init_list_head(&child->rq_link);
+    init_list_head(&child->child_link);
+    init_list_head(&child->children);
 
     // signal_handlers[] 故意繼承（lab spec）；per-delivery state 清掉避免 double-free
-    c->signal_pending  = 0;
-    c->signal_handling = false;
-    c->signal_stack    = (void *)0;
+    child->signal_pending  = 0;
+    child->signal_handling = false;
+    child->signal_stack    = (void *)0;
 
     // 1. kstack 整塊複製（含 parent 留下的 trap_frame 副本）
-    c->kstack = buddy_alloc_pages(0);
-    memcpy(c->kstack, p->kstack, KSTACK_SIZE);
+    child->kstack = buddy_alloc_pages(0);
+    memcpy(child->kstack, parent->kstack, KSTACK_SIZE);
 
     /* 2. lab6：deep-copy user pages via per-process PGD。
      *    parent / child user VA layout 完全一致，trap_frame.sp 不必修。
      *    kernel thread (pgd_pa=0) 不分配 user PGD，fork 後仍是 kernel thread。 */
-    if (p->pgd_pa) {
-        c->pgd_pa = alloc_pgd();
+    if (parent->pgd_pa) {
+        child->pgd_pa = alloc_pgd();
         /* Adv3：CoW share。parent / child 都改唯讀 + refcnt++，
          * 第一次 store 才走 do_page_fault → 配新頁 + memcpy。 */
-        vm_copy_user_cow(c->pgd_pa, p->pgd_pa);
+        vm_copy_user_cow(child->pgd_pa, parent->pgd_pa);
     } else {
-        c->pgd_pa = 0;
+        child->pgd_pa = 0;
     }
-    vma_copy_list(&c->vma_list, &p->vma_list);
+    vma_copy_list(&child->vma_list, &parent->vma_list);
     /* vma_copy_list 給 child 新配 vma node，parent 那顆 stack_vma pointer 不再有效；
      * 走 child vma_list 找 end 同 parent stack_vma 那顆對位回來。 */
-    c->stack_vma = (struct vma *)0;
-    if (p->stack_vma) {
-        struct list_head *q = c->vma_list.next;
-        while (q != &c->vma_list) {
-            struct vma *cv = list_entry(q, struct vma, link);
-            if (cv->end == p->stack_vma->end) { c->stack_vma = cv; break; }
-            q = q->next;
+    child->stack_vma = (struct vma *)0;
+    if (parent->stack_vma) {
+        struct list_head *node = child->vma_list.next;
+        while (node != &child->vma_list) {
+            struct vma *child_vma = list_entry(node, struct vma, link);
+            if (child_vma->end == parent->stack_vma->end) { child->stack_vma = child_vma; break; }
+            node = node->next;
         }
     }
 
     // 3. child trap_frame 在 child kstack 的同 offset
-    unsigned long off = (unsigned long)parent_tf - (unsigned long)p->kstack;
+    unsigned long off = (unsigned long)parent_tf - (unsigned long)parent->kstack;
     struct trap_frame *child_tf =
-        (struct trap_frame *)((unsigned long)c->kstack + off);
+        (struct trap_frame *)((unsigned long)child->kstack + off);
 
     // 4. child 的 fork 回傳值 = 0；同時 patch tp，避免 trap exit 從 frame load
     //    回 parent 的 tp（switch_to 雖然 mv tp, a1 過，ret_from_exception 又會
     //    從 trap_frame.tp 還原），導致 child 用 parent 的 thread pointer。
     child_tf->a0 = 0;
-    child_tf->tp = (uint64_t)c;
+    child_tf->tp = (uint64_t)child;
 
     // 5. child 第一次被 schedule：跳 ret_from_exception，sp 指 trap_frame
     //    這樣 trap exit 把 GPR / CSR 從 child_tf ld 回來、sret 進 U-mode，
     //    跳過完整 do_trap 路徑（不該再 dispatch 一次同個 syscall）
-    c->context.ra = (unsigned long)ret_from_exception;
-    c->context.sp = (unsigned long)child_tf;
+    child->context.ra = (unsigned long)ret_from_exception;
+    child->context.sp = (unsigned long)child_tf;
 
     // 6. parent ↔ child 連結 + 全域索引
-    list_add_tail(&c->child_link, &p->children);
-    list_add_tail(&c->all_link,   &all_threads);
-    enqueue_runqueue(c);
-    return c->pid;
+    list_add_tail(&child->child_link, &parent->children);
+    list_add_tail(&child->all_link,   &all_threads);
+    enqueue_runqueue(child);
+    return child->pid;
 }
 
 // parent 死前把 children 全部過繼給 idle（兼任 init）。
 // 前置：caller 在 syscall trap path，SIE=0。只搬 child_link 與 ppid，不動 child 的 state。
 static void reparent_children_to_idle(struct thread *dying) {
     while (!list_empty(&dying->children)) {
-        struct thread *c = list_entry(dying->children.next,
-                                      struct thread, child_link);
-        list_del(&c->child_link);
-        c->ppid = idle_thread->pid;
-        list_add_tail(&c->child_link, &idle_thread->children);
+        struct thread *child = list_entry(dying->children.next,
+                                          struct thread, child_link);
+        list_del(&child->child_link);
+        child->ppid = idle_thread->pid;
+        list_add_tail(&child->child_link, &idle_thread->children);
     }
 }
 
@@ -126,13 +126,13 @@ static void zombify(struct thread *t) {
     t->state = THREAD_ZOMBIE;
     reparent_children_to_idle(t);
 
-    struct thread *p = find_pid(t->ppid);
-    if (p && p->state == THREAD_WAITING
-         && (p->wait_pid == -1 || p->wait_pid == t->pid)) {
+    struct thread *parent = find_pid(t->ppid);
+    if (parent && parent->state == THREAD_WAITING
+         && (parent->wait_pid == -1 || parent->wait_pid == t->pid)) {
         // parent 正在等 → 喚醒走 do_waitpid 路徑 reap（child_link 留著給它找）
-        p->state = THREAD_RUNNING;
-        enqueue_runqueue(p);
-    } else if (!p || p == idle_thread) {
+        parent->state = THREAD_RUNNING;
+        enqueue_runqueue(parent);
+    } else if (!parent || parent == idle_thread) {
         // 沒人會等（parent 是 idle 或不存在）→ 自己進 zombie_list 給 idle 收
         list_del_init(&t->child_link);
         enqueue_zombie(t);
@@ -145,11 +145,11 @@ long do_waitpid(long pid) {
     struct thread *me = kthread_get_current();
     while (1) {
         unsigned long flags = irq_save();
-        struct thread *z = find_zombie_child(me, pid);
-        if (z) {
-            long ret = z->pid;
-            list_del(&z->child_link);
-            enqueue_zombie(z);   // 交給 idle 收屍
+        struct thread *zombie = find_zombie_child(me, pid);
+        if (zombie) {
+            long ret = zombie->pid;
+            list_del(&zombie->child_link);
+            enqueue_zombie(zombie);   // 交給 idle 收屍
             irq_restore(flags);
             return ret;
         }
@@ -180,13 +180,13 @@ void do_exit(int status) {
 // 強制終止 pid：等同替它 do_exit。不能殺自己（殺自己用 exit）；不能殺 kernel thread。
 // 前置：syscall trap path，SIE=0。
 long do_stop(long pid) {
-    struct thread *t = find_pid(pid);
-    if (!t || t == kthread_get_current() || t->is_kernel) return -1;
-    if (t->state == THREAD_RUNNING) {
-        list_del(&t->rq_link);
+    struct thread *target = find_pid(pid);
+    if (!target || target == kthread_get_current() || target->is_kernel) return -1;
+    if (target->state == THREAD_RUNNING) {
+        list_del(&target->rq_link);
     }
     // WAITING thread 已不在 run queue
-    zombify(t);
+    zombify(target);
     return 0;
 }
 
@@ -195,13 +195,13 @@ long do_stop(long pid) {
 static void sleep_wake(void* arg) {
     unsigned long flags = irq_save();
     int pid = (int)(unsigned long)arg;
-    struct thread* t = find_pid(pid);
-    if (!t || t->state != THREAD_WAITING) {
+    struct thread *target = find_pid(pid);
+    if (!target || target->state != THREAD_WAITING) {
         irq_restore(flags);
         return;
     }
-    t->state = THREAD_RUNNING;
-    enqueue_runqueue(t);
+    target->state = THREAD_RUNNING;
+    enqueue_runqueue(target);
     irq_restore(flags);
 }
 
