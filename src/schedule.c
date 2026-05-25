@@ -40,7 +40,6 @@ void kill_zombies(void) {
         uart_hex(z->pid);
         uart_puts("]\n");
         buddy_free_pages(z->kstack);
-        if (z->ustack) buddy_free_pages(z->ustack);
         if (z->pgd_pa) free_pgd(z->pgd_pa);   /* lab6: 釋放 user PGD + 走訪所有 leaf page */
         vma_free_all(&z->vma_list);
         dynalloc_free(z);

@@ -23,7 +23,6 @@ struct thread* kthread_create(thread_func_t fn) {
     t->ppid         = 0;
     t->state        = THREAD_RUNNING;     // 非 RUNNING 不會被 schedule 選到
     t->kstack       = buddy_alloc_pages(0);
-    t->ustack       = (void *)0;
     t->wait_pid     = -1;
     t->is_kernel    = true;               // do_exec 切 user image 後翻 false
     t->context.ra   = (unsigned long)fn;

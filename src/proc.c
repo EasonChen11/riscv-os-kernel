@@ -62,7 +62,6 @@ long do_fork(struct trap_frame *parent_tf) {
     /* 2. lab6：deep-copy user pages via per-process PGD。
      *    parent / child user VA layout 完全一致，trap_frame.sp 不必修。
      *    kernel thread (pgd_pa=0) 不分配 user PGD，fork 後仍是 kernel thread。 */
-    c->ustack = (void *)0;
     if (p->pgd_pa) {
         c->pgd_pa = alloc_pgd();
         /* Adv3：CoW share。parent / child 都改唯讀 + refcnt++，
