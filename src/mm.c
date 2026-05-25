@@ -129,6 +129,11 @@ long sys_mmap_impl(struct trap_frame *tf) {
     if (flags & MAP_POPULATE) {
         for (unsigned long va = start; va < start + length; va += PAGE_SIZE) {
             void *p = buddy_alloc_pages(0);
+            if (!p) {
+                list_del(&v->link);
+                dynalloc_free(v);
+                return -1;
+            }
             memset(p, 0, PAGE_SIZE);
             map_pages(me->pgd_pa, va, PAGE_SIZE,
                       virt_to_phys((unsigned long)p), pte_prot);
