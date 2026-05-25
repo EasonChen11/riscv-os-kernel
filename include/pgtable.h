@@ -1,5 +1,5 @@
-#ifndef _PGTABLE_H_
-#define _PGTABLE_H_
+#ifndef PGTABLE_H
+#define PGTABLE_H
 
 #define PAGE_OFFSET 0xffffffc000000000UL
 

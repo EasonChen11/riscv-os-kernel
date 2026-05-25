@@ -1,5 +1,5 @@
-#ifndef _MM_H_
-#define _MM_H_
+#ifndef MM_H
+#define MM_H
 
 #include "list.h"
 #include "trap.h"

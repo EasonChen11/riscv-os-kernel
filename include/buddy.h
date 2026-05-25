@@ -1,5 +1,5 @@
-#ifndef __BUDDY_H__
-#define __BUDDY_H__
+#ifndef BUDDY_H
+#define BUDDY_H
 
 #include "list.h"
 #include "pgtable.h"   /* PAGE_SIZE 與 PAGE_OFFSET 由此提供 */

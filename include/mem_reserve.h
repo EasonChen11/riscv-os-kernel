@@ -1,5 +1,5 @@
-#ifndef MEMORY_RESERVE_H
-#define MEMORY_RESERVE_H
+#ifndef MEM_RESERVE_H
+#define MEM_RESERVE_H
 
 void memory_reserve(unsigned long start, unsigned long size); // 將 [start, start+size) 區間記錄為 reserved（會 page-align）
 int  memory_is_reserved(unsigned long page_idx); // 查 page_idx 所在頁是否落在任一被 reserve 的區間內
