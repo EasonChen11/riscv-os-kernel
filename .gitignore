@@ -9,6 +9,7 @@ user/build/
 osctest.bin
 osctest.elf
 note.md
+flow.md
 NOTES.md
 tutorial.md
 kernel.its.note
