@@ -59,12 +59,7 @@ long do_fork(struct trap_frame *parent_tf) {
     c->kstack = buddy_alloc_pages(0);
     memcpy(c->kstack, p->kstack, KSTACK_SIZE);
 
-    // 2. child trap_frame 在 child kstack 的同 offset
-    unsigned long off = (unsigned long)parent_tf - (unsigned long)p->kstack;
-    struct trap_frame *child_tf =
-        (struct trap_frame *)((unsigned long)c->kstack + off);
-
-    /* 3. lab6：deep-copy user pages via per-process PGD。
+    /* 2. lab6：deep-copy user pages via per-process PGD。
      *    parent / child user VA layout 完全一致，trap_frame.sp 不必修。
      *    kernel thread (pgd_pa=0) 不分配 user PGD，fork 後仍是 kernel thread。 */
     c->ustack = (void *)0;
@@ -88,6 +83,11 @@ long do_fork(struct trap_frame *parent_tf) {
             q = q->next;
         }
     }
+
+    // 3. child trap_frame 在 child kstack 的同 offset
+    unsigned long off = (unsigned long)parent_tf - (unsigned long)p->kstack;
+    struct trap_frame *child_tf =
+        (struct trap_frame *)((unsigned long)c->kstack + off);
 
     // 4. child 的 fork 回傳值 = 0；同時 patch tp，避免 trap exit 從 frame load
     //    回 parent 的 tp（switch_to 雖然 mv tp, a1 過，ret_from_exception 又會
