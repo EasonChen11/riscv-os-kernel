@@ -22,7 +22,7 @@
 #define PTE_G  (1UL << 5)
 #define PTE_A  (1UL << 6)
 #define PTE_D  (1UL << 7)
-#define PTE_COW (1UL << 8) /* software bit: this page was writable, now CoW shared */
+#define PTE_COW (1UL << 8) /* software bit: was writable, now read-only pending CoW copy */
 
 #define PROT_KERNEL_RWX (PTE_V | PTE_R | PTE_W | PTE_X | PTE_G | PTE_A | PTE_D)
 #define PROT_KERNEL_RX  (PTE_V | PTE_R | PTE_X        | PTE_G | PTE_A | PTE_D)
