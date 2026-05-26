@@ -66,6 +66,11 @@ static long sys_kill(struct trap_frame *tf) {
     return do_kill((int)tf->a0, (int)tf->a1);
 }
 
+static long sys_mmap(struct trap_frame *tf) {
+    return do_mmap(kthread_get_current(),
+                   (void *)tf->a0, tf->a1, (int)tf->a2, (int)tf->a3);
+}
+
 // switch 而非 function pointer table：self-relocation 後 .rodata 內絕對位址不 fix-up
 void do_syscall(struct trap_frame *tf) {
     long nr = (long)tf->a7;
@@ -83,7 +88,7 @@ void do_syscall(struct trap_frame *tf) {
         case SYS_USLEEP:     ret = sys_usleep(tf);     break;
         case SYS_SIGNAL:     ret = sys_signal(tf);     break;
         case SYS_KILL:       ret = sys_kill(tf);       break;
-        case SYS_MMAP:       ret = sys_mmap_impl(tf);  break;
+        case SYS_MMAP:       ret = sys_mmap(tf);        break;
         // do_sigreturn 已整盤覆寫 *tf（含 a0），不能再走後面的 a0 寫回
         case SYS_SIGRETURN:  do_sigreturn(tf);         return;
         default:             ret = -1;                 break;

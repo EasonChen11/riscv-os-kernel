@@ -12,6 +12,9 @@
 #include "mm.h"
 #include "dynalloc.h"
 
+extern const char sigreturn_trampoline[];
+extern const char sigreturn_trampoline_end[];
+
 /* lab6 rst：user image @ VA 0x0、user stack top @ 0x4000000000
  * exec 只配/註冊 top 1 page；sp 往下踩出去由 do_page_fault 的 expand-stack 動態擴 vma */
 #define USER_STACK_TOP      0x4000000000UL
@@ -56,6 +59,12 @@ static void register_image_vma(struct thread *me,
     code_vma->src_size = image_size;
     me->stack_vma = vma_add_simple(&me->vma_list, USER_STACK_BASE_VA,
                                    USER_STACK_TOP, PROT_USER_RW);
+
+    unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
+    struct vma *sv = vma_alloc(me, PAGE_SIZE, PROT_USER_RX, MAP_ANONYMOUS);
+    sv->src_va   = (void *)sigreturn_trampoline;
+    sv->src_size = (int)tramp_size;
+    me->sigreturn_va = sv->start;
 }
 
 /* shell exec：當前 kernel thread 第一次跳 U-mode。手動 csr 配置 + sret。 */

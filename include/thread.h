@@ -41,6 +41,7 @@ struct thread {
     unsigned long       signal_handlers[NSIG];
     struct trap_frame   signal_saved_tf;
     bool                signal_handling;
+    unsigned long       sigreturn_va;    // exec 時設定，deliver_signal 用
     unsigned long       pgd_pa;        // user process 的 PGD（PA）；kernel thread = 0
     struct list_head    vma_list;      // mmap 區段，按 start 升冪
     struct vma         *stack_vma;     // 指向 vma_list 中的 user stack vma（fault 內動態擴張用）

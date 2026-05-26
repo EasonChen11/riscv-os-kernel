@@ -4,6 +4,8 @@
 #include "list.h"
 #include "trap.h"
 
+struct thread;
+
 /* mmap user-facing constants（rst） */
 #define PROT_NONE       0
 #define PROT_READ       1
@@ -31,8 +33,9 @@ struct vma {
 void  vma_init_list(struct list_head *head);
 void  vma_free_all(struct list_head *head);
 void  vma_copy_list(struct list_head *dst, struct list_head *src);
+struct vma *vma_alloc(struct thread *me, unsigned long length, unsigned long pte_prot, int flags);
 
-long  sys_mmap_impl(struct trap_frame *tf);
+long  do_mmap(struct thread *me, void *addr, unsigned long length, int prot, int flags);
 
 /* Adv2: trap.c 的 cause 12/13/15 都 dispatch 來這裡。
  * 在 vma 內 → demand paging 補上 page；不在 → segfault 殺 process。 */

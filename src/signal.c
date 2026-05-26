@@ -4,9 +4,6 @@
 #include "uart.h"
 #include "string.h"
 
-extern const char sigreturn_trampoline[];
-extern const char sigreturn_trampoline_end[];
-
 // trap exit 前處理 pending signal；改 tf 讓 user 醒來跑 handler。
 // !me 守衛擋 boot 早期 tp 未初始化時 trap 進來的 deref。
 void deliver_signal(struct trap_frame *tf) {
@@ -20,8 +17,8 @@ void deliver_signal(struct trap_frame *tf) {
         if (!(me->signal_pending & (1u << s))) continue;
         me->signal_pending &= ~(1u << s);
 
-        unsigned long h = me->signal_handlers[s];
-        if (h == 0) {
+        unsigned long handler = me->signal_handlers[s];
+        if (handler == 0) {
             if (s == SIGTERM) {
                 uart_puts("[signal] default SIGTERM -> do_exit\n");
                 do_exit(0);
@@ -32,18 +29,8 @@ void deliver_signal(struct trap_frame *tf) {
         me->signal_handling = true;
         me->signal_saved_tf = *tf;
 
-        /* trampoline 壓在 user 自己的 stack 上：
-         * SUM=1 允許 kernel 直接寫 user VA。
-         * 若該頁尚未 map（stack 跨頁），memcpy 觸發 S-mode store fault，
-         * do_page_fault 透過 try_expand_stack 自動補頁，不需要額外處理。 */
-        unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
-        unsigned long tramp_user = (tf->sp - tramp_size) & ~0xfUL;
-        memcpy((void *)tramp_user, sigreturn_trampoline, tramp_size);
-        asm volatile("fence.i" ::: "memory");
-
-        tf->sepc = h;
-        tf->sp   = tramp_user;
-        tf->ra   = tramp_user;
+        tf->sepc = handler;
+        tf->ra   = me->sigreturn_va;
         return;
     }
 }

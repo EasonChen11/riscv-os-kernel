@@ -83,49 +83,53 @@ static void vma_insert_sorted(struct thread *me, struct vma *nv) {
     list_add_tail(&nv->link, node);
 }
 
-/* mmap(addr, length, prot, flags)
- *   addr  : NULL → kernel 自選；非 NULL 不對齊或撞區 → 改成 hint，自選
- *   prot  : PROT_NONE / READ / WRITE / EXEC 任意或
- *   flags : MAP_ANONYMOUS | MAP_POPULATE
- */
-long sys_mmap_impl(struct trap_frame *tf) {
-    void         *hint   = (void *)tf->a0;
-    unsigned long length = tf->a1;
-    int           prot   = (int)tf->a2;
-    int           flags  = (int)tf->a3;
+/* 最底層：在指定 VA 建立 VMA 並插入 list，不做 find/populate。 */
+static struct vma *vma_create_at(struct thread *me, unsigned long start,
+                                  unsigned long length, unsigned long pte_prot, int flags) {
+    struct vma *nv = dynalloc_alloc(sizeof(*nv));
+    nv->start    = start;
+    nv->end      = start + length;
+    nv->pte_prot = pte_prot;
+    nv->flags    = flags;
+    nv->src_va   = (void *)0;
+    nv->src_size = 0;
+    init_list_head(&nv->link);
+    vma_insert_sorted(me, nv);
+    return nv;
+}
 
-    struct thread *me = kthread_get_current();
+/* kernel 內部用：在 MMAP_AREA 找空洞配一段匿名 VMA，回傳 vma 指標（va = vma->start）。
+ * 呼叫後可設 src_va / src_size 讓 do_page_fault 做 demand copy。 */
+struct vma *vma_alloc(struct thread *me, unsigned long length, unsigned long pte_prot, int flags) {
+    length = round_up_page(length);
+    unsigned long va = vma_find_free(me, length);
+    if (!va) return (void *)0;
+    return vma_create_at(me, va, length, pte_prot, flags);
+}
+
+/* mmap 核心邏輯：hint / prot 轉換 / MAP_POPULATE，回傳配到的 VA。
+ * addr  : NULL → kernel 自選；非 NULL 不對齊或撞區 → 改成 hint，自選
+ * prot  : PROT_NONE / READ / WRITE / EXEC 任意或
+ * flags : MAP_ANONYMOUS | MAP_POPULATE */
+long do_mmap(struct thread *me, void *addr, unsigned long length, int prot, int flags) {
     if (length == 0) return -1;
     length = round_up_page(length);
 
-    /* 1) 決定起始 VA */
+    unsigned long hint_va = (unsigned long)addr;
     unsigned long start;
-    unsigned long hint_va = (unsigned long)hint;
-    if (hint == (void *)0) {
+    if (!addr || (hint_va & (PAGE_SIZE - 1)) || vma_any_overlap(me, hint_va, hint_va + length))
         start = vma_find_free(me, length);
-    } else if ((hint_va & (PAGE_SIZE - 1)) || vma_any_overlap(me, hint_va, hint_va + length)) {
-        start = vma_find_free(me, length);   /* hint 不合法 → fallback */
-    } else {
+    else
         start = hint_va;
-    }
-    if (start == 0) return -1;
+    if (!start) return -1;
 
-    /* 2) prot → PTE flag */
     unsigned long pte_prot = PTE_V | PTE_U | PTE_A | PTE_D;
     if (prot & PROT_READ)  pte_prot |= PTE_R;
     if (prot & PROT_WRITE) pte_prot |= PTE_W;
     if (prot & PROT_EXEC)  pte_prot |= PTE_X;
 
-    /* 3) 建立 vma 並插入 list */
-    struct vma *vma = dynalloc_alloc(sizeof(*vma));
-    vma->start    = start;
-    vma->end      = start + length;
-    vma->pte_prot = pte_prot;
-    vma->flags    = flags;
-    init_list_head(&vma->link);
-    vma_insert_sorted(me, vma);
+    struct vma *vma = vma_create_at(me, start, length, pte_prot, flags);
 
-    /* 4) MAP_POPULATE：立即配 frame + map。否則留給 demand paging (Adv2) */
     if (flags & MAP_POPULATE) {
         for (unsigned long va = start; va < start + length; va += PAGE_SIZE) {
             void *frame = buddy_alloc_pages(0);
@@ -141,6 +145,7 @@ long sys_mmap_impl(struct trap_frame *tf) {
     }
     return (long)start;
 }
+
 
 /* Adv2: 查 va 落在哪個 vma；找不到回 NULL */
 static struct vma *vma_lookup(struct thread *me, unsigned long va) {
