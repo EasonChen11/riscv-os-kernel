@@ -2,11 +2,7 @@
 #include "thread.h"
 #include "proc.h"
 #include "uart.h"
-#include "buddy.h"
 #include "string.h"
-#include "mm.h"
-#include "vm.h"
-#include "pgtable.h"
 
 extern const char sigreturn_trampoline[];
 extern const char sigreturn_trampoline_end[];
@@ -33,28 +29,21 @@ void deliver_signal(struct trap_frame *tf) {
             return;
         }
 
-        me->signal_handling   = true;
-        me->signal_saved_tf   = *tf;
-        me->signal_stack      = buddy_alloc_pages(0);
+        me->signal_handling = true;
+        me->signal_saved_tf = *tf;
 
+        /* trampoline 壓在 user 自己的 stack 上：
+         * SUM=1 允許 kernel 直接寫 user VA。
+         * 若該頁尚未 map（stack 跨頁），memcpy 觸發 S-mode store fault，
+         * do_page_fault 透過 try_expand_stack 自動補頁，不需要額外處理。 */
         unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
-        /* kernel VA：用來 memcpy trampoline */
-        unsigned long kern_top  = (unsigned long)me->signal_stack + PAGE_SIZE;
-        unsigned long kern_tramp = (kern_top - tramp_size) & ~0xfUL;
-        memcpy((void *)kern_tramp, sigreturn_trampoline, tramp_size);
+        unsigned long tramp_user = (tf->sp - tramp_size) & ~0xfUL;
+        memcpy((void *)tramp_user, sigreturn_trampoline, tramp_size);
         asm volatile("fence.i" ::: "memory");
 
-        /* 把這頁 map 進 user page table，讓 user mode 能執行 trampoline */
-        map_pages(me->pgd_pa, USER_SIGNAL_STACK_VA, PAGE_SIZE,
-                  virt_to_phys((unsigned long)me->signal_stack), PROT_USER_RWX);
-
-        /* user VA：sepc/sp/ra 都要用 user VA */
-        unsigned long user_top  = USER_SIGNAL_STACK_VA + PAGE_SIZE;
-        unsigned long user_tramp = user_top - (kern_top - kern_tramp);
-
         tf->sepc = h;
-        tf->sp   = user_tramp;
-        tf->ra   = user_tramp;
+        tf->sp   = tramp_user;
+        tf->ra   = tramp_user;
         return;
     }
 }
@@ -75,15 +64,9 @@ long do_kill(int pid, int signum) {
     return 0;
 }
 
-// dispatcher 必須在 *tf 整盤覆寫後 return，避免 a0 被覆蓋
 void do_sigreturn(struct trap_frame *tf) {
     struct thread *me = kthread_get_current();
     if (!me || !me->signal_handling) return;
-    if (me->signal_stack) {
-        vm_unmap_page(me->pgd_pa, USER_SIGNAL_STACK_VA);
-        buddy_free_pages(me->signal_stack);
-        me->signal_stack = (void *)0;
-    }
     *tf = me->signal_saved_tf;
     me->signal_handling = false;
 }

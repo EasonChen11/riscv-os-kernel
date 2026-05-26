@@ -34,7 +34,6 @@ struct thread* kthread_create(thread_func_t fn) {
     t->signal_pending = 0;
     for (int i = 0; i < NSIG; i++) t->signal_handlers[i] = 0;
     t->signal_handling = false;
-    t->signal_stack    = (void *)0;
     t->pgd_pa          = 0;   /* kernel thread；exec 之後 user thread 才設 */
     vma_init_list(&t->vma_list);
     t->stack_vma = (struct vma *)0;

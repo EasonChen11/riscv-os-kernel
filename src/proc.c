@@ -53,7 +53,6 @@ long do_fork(struct trap_frame *parent_tf) {
     // signal_handlers[] 故意繼承（lab spec）；per-delivery state 清掉避免 double-free
     child->signal_pending  = 0;
     child->signal_handling = false;
-    child->signal_stack    = (void *)0;
 
     // 1. kstack 整塊複製（含 parent 留下的 trap_frame 副本）
     child->kstack = buddy_alloc_pages(0);

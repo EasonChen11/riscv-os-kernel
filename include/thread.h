@@ -40,7 +40,6 @@ struct thread {
     unsigned int        signal_pending;
     unsigned long       signal_handlers[NSIG];
     struct trap_frame   signal_saved_tf;
-    void               *signal_stack;
     bool                signal_handling;
     unsigned long       pgd_pa;        // user process 的 PGD（PA）；kernel thread = 0
     struct list_head    vma_list;      // mmap 區段，按 start 升冪
