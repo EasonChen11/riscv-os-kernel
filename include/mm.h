@@ -23,6 +23,8 @@ struct vma {
     unsigned long    pte_prot;  /* PTE flag set，含 V/U/A/D 與 R/W/X */
     int              flags;     /* MAP_ANONYMOUS | MAP_POPULATE | ... */
     struct list_head link;      /* thread->vma_list，按 start 升冪 */
+    const void      *src_va;    /* code VMA：cpio 資料 kernel VA；anonymous 為 0 */
+    int              src_size;  /* code VMA：binary 大小（bytes）；anonymous 為 0 */
 };
 
 void  vma_init_list(struct list_head *head);
