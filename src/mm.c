@@ -237,6 +237,15 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
     uart_puts("\n");
     void *frame = buddy_alloc_pages(0);
     memset(frame, 0, PAGE_SIZE);
+    if (vma->src_va) {
+        /* code VMA：從 cpio 資料按頁 offset 複製正確內容 */
+        unsigned long pg_off = va_aligned - vma->start;
+        if ((int)pg_off < vma->src_size) {
+            int copy_bytes = vma->src_size - (int)pg_off;
+            if (copy_bytes > (int)PAGE_SIZE) copy_bytes = PAGE_SIZE;
+            memcpy(frame, (const char *)vma->src_va + pg_off, copy_bytes);
+        }
+    }
     map_pages(me->pgd_pa, va_aligned, PAGE_SIZE,
               virt_to_phys((unsigned long)frame), vma->pte_prot);
 }

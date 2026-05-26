@@ -24,9 +24,11 @@ static struct vma *vma_add_simple(struct list_head *head, unsigned long start,
     vma->start    = start;
     vma->end      = end;
     vma->pte_prot = pte_prot;
-    vma->flags    = MAP_ANONYMOUS | MAP_POPULATE;
+    vma->flags    = MAP_ANONYMOUS;
+    vma->src_va   = (void *)0;
+    vma->src_size = 0;
     init_list_head(&vma->link);
-    list_add_tail(&vma->link, head);   /* head 為空時等同插在最前 */
+    list_add_tail(&vma->link, head);
     return vma;
 }
 
@@ -43,33 +45,15 @@ static int cpio_lookup(const char *path, const void **out_image, int *out_size) 
     return -1;
 }
 
-/* 把 user image 一頁一頁配新 frame + memcpy + map 進 user PGD VA 0x0 起 */
-static void load_user_image(unsigned long pgd_pa, const void *image_src, int size)
-{
-    int npages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    for (int i = 0; i < npages; i++) {
-        void *frame = buddy_alloc_pages(0);
-        memset(frame, 0, PAGE_SIZE);
-        int copy_size = (i == npages - 1) ? (size - i * PAGE_SIZE) : PAGE_SIZE;
-        memcpy(frame, (const char *)image_src + i * PAGE_SIZE, copy_size);
-        map_pages(pgd_pa, (unsigned long)i * PAGE_SIZE, PAGE_SIZE,
-                  virt_to_phys((unsigned long)frame), PROT_USER_RWX);
-    }
-}
-
-static void map_user_stack(unsigned long pgd_pa)
-{
-    void *stack_page = buddy_alloc_pages(0);
-    memset(stack_page, 0, PAGE_SIZE);
-    map_pages(pgd_pa, USER_STACK_TOP_PAGE, PAGE_SIZE,
-              virt_to_phys((unsigned long)stack_page), PROT_USER_RW);
-}
-
-/* 把 image 與 stack 登記進 vma_list，讓 mmap 的 overlap 判斷看得到。
- * 區段 round-up 到 page 邊界。 */
-static void register_image_vma(struct thread *me, int image_size) {
+/* 登記 code VMA 與 stack VMA；不配任何實體 frame，交給 do_page_fault。
+ * code VMA 記住 cpio 來源，供 page fault handler 按頁複製正確內容。 */
+static void register_image_vma(struct thread *me,
+                                const void *image_src, int image_size) {
     unsigned long img_end = (image_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    vma_add_simple(&me->vma_list, 0x0UL, img_end, PROT_USER_RWX);
+    struct vma *code_vma = vma_add_simple(&me->vma_list, 0x0UL, img_end,
+                                          PROT_USER_RWX);
+    code_vma->src_va   = image_src;
+    code_vma->src_size = image_size;
     me->stack_vma = vma_add_simple(&me->vma_list, USER_STACK_BASE_VA,
                                    USER_STACK_TOP, PROT_USER_RW);
 }
@@ -95,9 +79,7 @@ void exec_umode(const char *path) {
     vma_free_all(&me->vma_list);   /* exec 換 image 也丟掉舊 mmap 區段 */
     me->stack_vma = (struct vma *)0;
 
-    load_user_image(me->pgd_pa, image_src, image_size);
-    map_user_stack(me->pgd_pa);
-    register_image_vma(me, image_size);
+    register_image_vma(me, image_src, image_size);
 
     unsigned long kstack_top = (unsigned long)me->kstack + KSTACK_SIZE;
 
@@ -160,9 +142,7 @@ long do_exec(const char *path, struct trap_frame *tf) {
     vma_free_all(&me->vma_list);   /* exec 換 image 也丟掉舊 mmap 區段 */
     me->stack_vma = (struct vma *)0;
 
-    load_user_image(me->pgd_pa, image_src, image_size);
-    map_user_stack(me->pgd_pa);
-    register_image_vma(me, image_size);
+    register_image_vma(me, image_src, image_size);
 
     tf->sepc    = 0x0UL;
     tf->sp      = USER_STACK_TOP;
