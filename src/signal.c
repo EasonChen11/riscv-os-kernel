@@ -4,6 +4,9 @@
 #include "uart.h"
 #include "buddy.h"
 #include "string.h"
+#include "mm.h"
+#include "vm.h"
+#include "pgtable.h"
 
 extern const char sigreturn_trampoline[];
 extern const char sigreturn_trampoline_end[];
@@ -35,15 +38,23 @@ void deliver_signal(struct trap_frame *tf) {
         me->signal_stack      = buddy_alloc_pages(0);
 
         unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
-        unsigned long top   = (unsigned long)me->signal_stack + PAGE_SIZE;
-        unsigned long tramp = (top - tramp_size) & ~0xfUL; // RISC-V 的呼叫慣例要求 Stack 指標（以及跳轉位址）最好對齊，否則某些指令可能會觸發 Alignment Fault。
-        memcpy((void *)tramp, sigreturn_trampoline, tramp_size);
-        // 新配的頁，I-cache 可能撈到 stale line
+        /* kernel VA：用來 memcpy trampoline */
+        unsigned long kern_top  = (unsigned long)me->signal_stack + PAGE_SIZE;
+        unsigned long kern_tramp = (kern_top - tramp_size) & ~0xfUL;
+        memcpy((void *)kern_tramp, sigreturn_trampoline, tramp_size);
         asm volatile("fence.i" ::: "memory");
 
+        /* 把這頁 map 進 user page table，讓 user mode 能執行 trampoline */
+        map_pages(me->pgd_pa, USER_SIGNAL_STACK_VA, PAGE_SIZE,
+                  virt_to_phys((unsigned long)me->signal_stack), PROT_USER_RWX);
+
+        /* user VA：sepc/sp/ra 都要用 user VA */
+        unsigned long user_top  = USER_SIGNAL_STACK_VA + PAGE_SIZE;
+        unsigned long user_tramp = user_top - (kern_top - kern_tramp);
+
         tf->sepc = h;
-        tf->sp   = tramp;
-        tf->ra   = tramp;
+        tf->sp   = user_tramp;
+        tf->ra   = user_tramp;
         return;
     }
 }
@@ -69,10 +80,10 @@ void do_sigreturn(struct trap_frame *tf) {
     struct thread *me = kthread_get_current();
     if (!me || !me->signal_handling) return;
     if (me->signal_stack) {
+        vm_unmap_page(me->pgd_pa, USER_SIGNAL_STACK_VA);
         buddy_free_pages(me->signal_stack);
         me->signal_stack = (void *)0;
     }
     *tf = me->signal_saved_tf;
     me->signal_handling = false;
-    uart_puts("[signal] sigreturn restored\n");
 }

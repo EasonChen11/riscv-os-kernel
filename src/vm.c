@@ -311,3 +311,18 @@ int vm_set_pte_writable_copy(unsigned long pgd_pa, unsigned long va,
     sfence_vma_all();
     return 0;
 }
+
+/* 清除 va 對應的 leaf PTE（設為 0）；中介頁不釋放。用於 signal stack unmap。 */
+void vm_unmap_page(unsigned long pgd_pa, unsigned long va)
+{
+    unsigned long *pgd_va = (unsigned long *)phys_to_virt(pgd_pa);
+    unsigned long vpn2 = (va >> 30) & 0x1ff;
+    unsigned long vpn1 = (va >> 21) & 0x1ff;
+    unsigned long vpn0 = (va >> 12) & 0x1ff;
+    if (!(pgd_va[vpn2] & PTE_V)) return;
+    unsigned long *pmd = (unsigned long *)phys_to_virt(PTE_TO_PA(pgd_va[vpn2]));
+    if (!(pmd[vpn1] & PTE_V)) return;
+    unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd[vpn1]));
+    pte[vpn0] = 0;
+    sfence_vma_all();
+}
