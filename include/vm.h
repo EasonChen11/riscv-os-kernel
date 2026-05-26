@@ -29,6 +29,7 @@ void          vm_copy_user_cow(unsigned long dst_pgd_pa, unsigned long src_pgd_p
 unsigned long vm_lookup_pte(unsigned long pgd_pa, unsigned long va);
 int           vm_set_pte_writable_copy(unsigned long pgd_pa, unsigned long va,
                                        unsigned long new_pa, unsigned long prot);
+void          vm_unmap_page(unsigned long pgd_pa, unsigned long va);
 
 /* context switch helper */
 static inline void switch_pgd(unsigned long pgd_pa) {

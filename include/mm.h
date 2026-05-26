@@ -17,6 +17,9 @@
 #define MMAP_AREA_BASE  0x10000000UL
 #define MMAP_AREA_END   0x3fffff0000UL   /* user stack base 之下 */
 
+/* signal trampoline 固定 user VA；放在 mmap 區下方、不與 stack/image 重疊 */
+#define USER_SIGNAL_STACK_VA  0x3ffc000000UL
+
 struct vma {
     unsigned long    start;     /* page-aligned */
     unsigned long    end;       /* page-aligned，exclusive */
