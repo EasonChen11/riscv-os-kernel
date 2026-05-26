@@ -174,6 +174,7 @@ static struct vma *try_expand_stack(struct thread *me, unsigned long bad_va) {
     if (gap > STACK_GROWSDOWN_GAP) return (void *)0;
     unsigned long new_start = bad_va & ~(PAGE_SIZE - 1);
     if (sv->end - new_start > STACK_RLIMIT) return (void *)0;
+    if (vma_any_overlap(me, new_start, sv->start)) return (void *)0;
     sv->start = new_start;
     return sv;
 }
