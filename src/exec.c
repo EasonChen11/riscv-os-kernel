@@ -36,14 +36,17 @@ static int cpio_lookup(const char *path, const void **out_image, int *out_size) 
 
 /* 登記 code VMA 與 stack VMA；不配任何實體 frame，交給 do_page_fault。
  * code VMA 記住 cpio 來源，供 page fault handler 按頁複製正確內容。 */
-static void register_image_vma(struct thread *me,
-                                const void *image_src, int image_size) {
+static void register_image_vma(struct thread *me, const void *image_src, int image_size) {
+    // code VMA：從 VA 0 開始、長度對齊到 page，rwx 權限
     unsigned long img_end = (image_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     struct vma *code_vma = vma_create_at(me, 0x0UL, img_end, PROT_USER_RWX, MAP_ANONYMOUS);
     code_vma->src_va   = image_src;
     code_vma->src_size = image_size;
+
+    // stack VMA：從 USER_STACK_BASE_VA 開始、長度 1 page，rw 權限；初始不 map frame，由 page fault 動態擴張
     me->stack_vma = vma_create_at(me, USER_STACK_BASE_VA, PAGE_SIZE, PROT_USER_RW, MAP_ANONYMOUS);
 
+    // signal trampoline VMA：從任意 VA 開始、長度對齊到 page，rx 權限；初始不 map frame，由 deliver_signal 動態註冊
     unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
     struct vma *sv = vma_alloc(me, PAGE_SIZE, PROT_USER_RX, MAP_ANONYMOUS);
     sv->src_va   = (void *)sigreturn_trampoline;
