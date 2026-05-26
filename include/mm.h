@@ -33,6 +33,7 @@ struct vma {
 void  vma_init_list(struct list_head *head);
 void  vma_free_all(struct list_head *head);
 void  vma_copy_list(struct list_head *dst, struct list_head *src);
+struct vma *vma_create_at(struct thread *me, unsigned long start, unsigned long length, unsigned long pte_prot, int flags);
 struct vma *vma_alloc(struct thread *me, unsigned long length, unsigned long pte_prot, int flags);
 
 long  do_mmap(struct thread *me, void *addr, unsigned long length, int prot, int flags);

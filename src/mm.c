@@ -83,8 +83,8 @@ static void vma_insert_sorted(struct thread *me, struct vma *nv) {
     list_add_tail(&nv->link, node);
 }
 
-/* 最底層：在指定 VA 建立 VMA 並插入 list，不做 find/populate。 */
-static struct vma *vma_create_at(struct thread *me, unsigned long start,
+/* 在指定 VA 建立 VMA 並插入 list，不做 find/populate。 */
+struct vma *vma_create_at(struct thread *me, unsigned long start,
                                   unsigned long length, unsigned long pte_prot, int flags) {
     struct vma *nv = dynalloc_alloc(sizeof(*nv));
     nv->start    = start;

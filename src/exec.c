@@ -21,20 +21,6 @@ extern const char sigreturn_trampoline_end[];
 #define USER_STACK_TOP_PAGE (USER_STACK_TOP - PAGE_SIZE)
 #define USER_STACK_BASE_VA  USER_STACK_TOP_PAGE
 
-static struct vma *vma_add_simple(struct list_head *head, unsigned long start,
-                                  unsigned long end, unsigned long pte_prot) {
-    struct vma *vma = dynalloc_alloc(sizeof(*vma));
-    vma->start    = start;
-    vma->end      = end;
-    vma->pte_prot = pte_prot;
-    vma->flags    = MAP_ANONYMOUS;
-    vma->src_va   = (void *)0;
-    vma->src_size = 0;
-    init_list_head(&vma->link);
-    list_add_tail(&vma->link, head);
-    return vma;
-}
-
 static int cpio_lookup(const char *path, const void **out_image, int *out_size) {
     struct cpio_entry_info info;
     const void *rd = g_initrd_base;
@@ -53,12 +39,10 @@ static int cpio_lookup(const char *path, const void **out_image, int *out_size) 
 static void register_image_vma(struct thread *me,
                                 const void *image_src, int image_size) {
     unsigned long img_end = (image_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    struct vma *code_vma = vma_add_simple(&me->vma_list, 0x0UL, img_end,
-                                          PROT_USER_RWX);
+    struct vma *code_vma = vma_create_at(me, 0x0UL, img_end, PROT_USER_RWX, MAP_ANONYMOUS);
     code_vma->src_va   = image_src;
     code_vma->src_size = image_size;
-    me->stack_vma = vma_add_simple(&me->vma_list, USER_STACK_BASE_VA,
-                                   USER_STACK_TOP, PROT_USER_RW);
+    me->stack_vma = vma_create_at(me, USER_STACK_BASE_VA, PAGE_SIZE, PROT_USER_RW, MAP_ANONYMOUS);
 
     unsigned long tramp_size = sigreturn_trampoline_end - sigreturn_trampoline;
     struct vma *sv = vma_alloc(me, PAGE_SIZE, PROT_USER_RX, MAP_ANONYMOUS);
