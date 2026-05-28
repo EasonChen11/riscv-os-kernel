@@ -84,6 +84,28 @@ watch:
 	@echo "watching $(PTS); exit: Ctrl-A k"
 	screen $(PTS)
 
+
+
+# CPIO_ROOT：解包後的暫存目錄，預設放在 INITRD 旁邊
+CPIO_ROOT ?= $(DIR)/cpio_root
+
+cpio:
+	cpio -o -H newc < $(DIR)/cpio_files > $(INITRD)
+
+# 將 INITRD 解包到 CPIO_ROOT，方便手動放入新檔案
+cpio-unpack:
+	mkdir -p $(CPIO_ROOT)
+	cd $(CPIO_ROOT) && cpio -idm --no-absolute-filenames < $(INITRD)
+
+# 將 CPIO_ROOT 重新打包回 INITRD，完成後自動清除暫存目錄
+cpio-pack:
+	cd $(CPIO_ROOT) && find . | cpio -o -H newc > $(INITRD)
+	$(MAKE) cpio-clean
+
+# 清除暫存目錄
+cpio-clean:
+	rm -rf $(CPIO_ROOT)
+
 load:
 	sudo python3 send.py $(PTS) $(KERNEL)
 
@@ -94,4 +116,32 @@ clean:
 	rm -f $(TARGET) $(TARGET).fit bootloader_board.its
 	rm -rf $(BUILD_DIR)
 
-.PHONY: build clean run run_stdio watch load
+help:
+	@echo "Usage: make [target] [PARAM=value ...]"
+	@echo ""
+	@echo "Build targets:"
+	@echo "  build          板子版 .fit（預設）"
+	@echo "  run            QEMU pty 模式（另開 terminal 用 watch/load）"
+	@echo "  run_stdio      QEMU stdio 模式，僅觀察輸出（無法上傳）"
+	@echo "  clean          清除 build/ 及產出的 .fit / .its"
+	@echo ""
+	@echo "Upload targets:"
+	@echo "  load           透過 send.py 上傳 kernel 到板子"
+	@echo "  qemu_load      透過 send.py 上傳 kernel 到 QEMU pty"
+	@echo "  watch          用 screen 監看 UART 輸出（退出：Ctrl-A k）"
+	@echo ""
+	@echo "CPIO targets:"
+	@echo "  cpio           從 \$$(DIR)/cpio_files 清單打包 initramfs.cpio"
+	@echo "  cpio-unpack    解包 initramfs.cpio 到 \$$(CPIO_ROOT)"
+	@echo "  cpio-pack      從 \$$(CPIO_ROOT) 重新打包，完成後自動 cpio-clean"
+	@echo "  cpio-clean     刪除 \$$(CPIO_ROOT) 暫存目錄"
+	@echo ""
+	@echo "Parameters (current values):"
+	@echo "  DIR       = $(DIR)"
+	@echo "  KERNEL    = $(KERNEL)"
+	@echo "  INITRD    = $(INITRD)"
+	@echo "  CPIO_ROOT = $(CPIO_ROOT)"
+	@echo "  PTS       = $(PTS)"
+	@echo "  qemu_PTS  = $(qemu_PTS)"
+
+.PHONY: build clean run run_stdio watch load cpio cpio-unpack cpio-pack cpio-clean help
