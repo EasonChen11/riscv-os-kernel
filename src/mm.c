@@ -237,6 +237,13 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
         return;
     }
 
+    /* load fault 但 vma 無 R → PROT_NONE，直接 segfault */
+    if (!needs_w && !needs_x && !(vma->pte_prot & PTE_R)) {
+        uart_puts("[Segmentation fault]: Kill Process\n");
+        do_exit(-1);
+        return;
+    }
+
     /* (3) PTE 不存在 → demand paging */
     uart_puts("[Translation fault]: ");
     uart_hex(bad_va);
