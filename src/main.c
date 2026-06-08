@@ -14,6 +14,7 @@
 #include "exec.h"
 #include "thread.h"
 #include "pgtable.h"
+#include "vfs.h"
 // schedule.h 已 declare start_preempt
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
@@ -79,6 +80,10 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
 
     // 從這裡開始 uart_puts 可用（interrupt 模式下由 UART ISR drain TX ring）
     uart_init_print_info();
+
+    // VFS：register tmpfs + 建 rootfs（只用 dynalloc，buddy 已就緒供寫檔配頁）
+    vfs_init();
+    vfs_selftest_be1();   // TODO(lab7): BE1 暫時自測，BE4/整合後移除
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();

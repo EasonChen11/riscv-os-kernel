@@ -1,0 +1,105 @@
+#ifndef VFS_H
+#define VFS_H
+
+#include <stdint.h>
+
+/* 開檔旗標 / lseek / ioctl 請求碼（規格固定值） */
+#define O_CREAT 00000100
+#define SEEK_SET 0
+#define FB_IOCTL_GET_INFO 0
+
+/* 規格上限 */
+#define VFS_MAX_PATH      255   /* pathname 最長 */
+#define VFS_MAX_COMPONENT 16    /* component name <=15 + '\0' */
+#define VFS_MAX_FD        16    /* 每 process 開檔數，fd < 16 */
+
+/* 錯誤碼：失敗一律回負值 */
+#define E_OK       0
+#define E_NOENT   -1   /* 找不到 */
+#define E_EXIST   -2   /* create/mkdir 目標已存在 */
+#define E_NOTDIR  -3   /* 對非目錄做 lookup/mkdir */
+#define E_RDONLY  -4   /* 對唯讀 fs 寫 */
+#define E_INVAL   -5   /* 參數錯（壞 fd / 壞 path / 滿） */
+#define E_MAXFD   -6   /* fd table 滿 */
+
+struct vnode;
+struct file;
+struct mount;
+struct filesystem;
+
+struct file_operations {
+    int  (*open) (struct vnode* file_node, struct file** target);
+    int  (*close)(struct file* file);
+    int  (*read) (struct file* file, void* buf, uint64_t len);
+    int  (*write)(struct file* file, const void* buf, uint64_t len);
+    long (*lseek64)(struct file* file, long offset, int whence);     /* Adv2 */
+    int  (*ioctl)(struct file* file, unsigned long request, void* arg); /* Adv2 */
+};
+
+struct vnode_operations {
+    int (*lookup)(struct vnode* dir, struct vnode** target, const char* component_name);
+    int (*create)(struct vnode* dir, struct vnode** target, const char* component_name);
+    int (*mkdir) (struct vnode* dir, struct vnode** target, const char* component_name);
+};
+
+struct vnode {
+    struct mount* mount;             /* 非 NULL：此 vnode 被掛載，解析時降到 mount->root */
+    struct vnode* parent;            /* 父目錄 vnode（給 ".."）；root 指自己 */
+    struct vnode_operations* v_ops;
+    struct file_operations*  f_ops;
+    void* internal;                  /* 底層 fs 的私有節點 */
+};
+
+struct file {
+    struct vnode* vnode;
+    uint64_t f_pos;                  /* 下一次 R/W 位置（special file 可不推進） */
+    struct file_operations* f_ops;
+    int flags;
+};
+
+struct mount {
+    struct vnode* root;
+    struct filesystem* fs;
+};
+
+struct filesystem {
+    const char* name;
+    int (*setup_mount)(struct filesystem* fs, struct mount* mount);
+};
+
+struct framebuffer_info {
+    unsigned int width;
+    unsigned int height;
+    unsigned int bpp;                /* byte per pixel */
+};
+
+extern struct mount* rootfs;
+
+/* fs / 裝置註冊 */
+int register_filesystem(struct filesystem* fs);
+struct filesystem* find_filesystem(const char* name);
+
+/* 開機初始化：register tmpfs + 建 rootfs */
+void vfs_init(void);
+
+/* 路徑解析 */
+int vfs_lookup(const char* pathname, struct vnode** target);
+int vfs_lookup_parent(const char* pathname, struct vnode** parent, char* last);
+
+/* 檔案操作（VFS 層） */
+int vfs_open(const char* pathname, int flags, struct file** target);
+int vfs_close(struct file* file);
+int vfs_read(struct file* file, void* buf, uint64_t len);
+int vfs_write(struct file* file, const void* buf, uint64_t len);
+
+/* 目錄 / 掛載（BE2 起） */
+int vfs_mkdir(const char* pathname);
+int vfs_mount(const char* target, const char* fsname);
+
+/* small helper：複製 component name（無 libc strncpy） */
+void vfs_name_copy(char* dst, const char* src, int dst_size);
+
+/* TODO(lab7): BE1/BE2 暫時自測，整合完成後移除 */
+void vfs_selftest_be1(void);
+
+#endif /* VFS_H */
