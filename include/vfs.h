@@ -109,8 +109,4 @@ struct file* fd_get(struct thread* t, int fd);    /* 壞 fd / 未開 回 NULL */
 /* small helper：複製 component name（無 libc strncpy） */
 void vfs_name_copy(char* dst, const char* src, int dst_size);
 
-/* TODO(lab7): BE1/BE2/BE3 暫時自測，整合完成後移除 */
-void vfs_selftest_be1(void);
-void vfs_selftest_be3_thread(void);   /* 需在 kernel thread context 跑 */
-
 #endif /* VFS_H */

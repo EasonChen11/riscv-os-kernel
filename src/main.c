@@ -93,7 +93,6 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     int uart_id = uart_dev_init();
     vfs_mkdir("/dev");
     vfs_mknod("/dev/uart", uart_id);
-    vfs_selftest_be1();   // TODO(lab7): BE1/BE2/BE4/Adv1 暫時自測，整合後移除
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
@@ -109,7 +108,6 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     kthread_init();
     kthread_bootstrap_idle();
 
-    kthread_create(vfs_selftest_be3_thread);  // TODO(lab7): BE3 暫時自測 thread，整合後移除
     kthread_create(shell_thread);   // shell：preemption 帶它跑
 
     start_preempt();
