@@ -9,6 +9,7 @@
 #include "timer.h"
 #include "vm.h"
 #include "mm.h"
+#include "vfs.h"
 
 extern void ret_from_exception(void);
 
@@ -79,6 +80,17 @@ long do_fork(struct trap_frame *parent_tf) {
             struct vma *child_vma = list_entry(node, struct vma, link);
             if (child_vma->end == parent->stack_vma->end) { child->stack_vma = child_vma; break; }
             node = node->next;
+        }
+    }
+
+    /* 2.5 fd_table 深拷貝：每個開啟的 file handle 配新的一份（f_pos 獨立），
+     *     指向同一個 vnode。否則 child close 會 free 掉 parent 還在用的 handle。
+     *     cwd 是 vnode 指標、vnode 長存，沿用淺拷貝即可。 */
+    for (int i = 0; i < THREAD_MAX_FD; i++) {
+        if (parent->fd_table[i]) {
+            struct file *nf = dynalloc_alloc(sizeof(struct file));
+            *nf = *parent->fd_table[i];
+            child->fd_table[i] = nf;
         }
     }
 

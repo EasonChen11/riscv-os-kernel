@@ -2,6 +2,7 @@
 #include "tmpfs.h"
 #include "string.h"
 #include "dynalloc.h"
+#include "thread.h"
 
 struct mount* rootfs;
 
@@ -28,10 +29,25 @@ void vfs_name_copy(char* dst, const char* src, int dst_size) {
     dst[i] = '\0';
 }
 
-/* ---- 解析起點：BE3 之前統一用 rootfs root（路徑都是絕對的）。
- *      BE3 加入 per-task cwd 後改讀 current thread 的 cwd。 ---- */
-static struct vnode* vfs_start_node(void) {
+/* ---- 解析起點：絕對路徑用 rootfs root；相對路徑用 current thread 的 cwd。
+ *      current_cwd 只在相對路徑時呼叫（user syscall context，tp 有效）；
+ *      boot 期 selftest 全用絕對路徑，不會碰到無效 tp。 ---- */
+static struct vnode* current_cwd(void) {
+    struct thread* t = kthread_get_current();
+    if (t && t->cwd) return t->cwd;
     return rootfs->root;
+}
+
+/* ---- fd table helper ---- */
+int fd_alloc(struct thread* t, struct file* f) {
+    for (int i = 0; i < THREAD_MAX_FD; i++)
+        if (!t->fd_table[i]) { t->fd_table[i] = f; return i; }
+    return E_MAXFD;
+}
+
+struct file* fd_get(struct thread* t, int fd) {
+    if (fd < 0 || fd >= THREAD_MAX_FD) return (struct file*)0;
+    return t->fd_table[fd];
 }
 
 /* ---- 路徑走訪：支援絕對/相對、連續斜線、"."、".."；跨 mount 於每一步 ---- */
@@ -79,11 +95,13 @@ static int path_walk(struct vnode* start, const char* path,
 }
 
 int vfs_lookup(const char* pathname, struct vnode** target) {
-    return path_walk(vfs_start_node(), pathname, target, 0, (char*)0);
+    struct vnode* start = (pathname[0] == '/') ? rootfs->root : current_cwd();
+    return path_walk(start, pathname, target, 0, (char*)0);
 }
 
 int vfs_lookup_parent(const char* pathname, struct vnode** parent, char* last) {
-    return path_walk(vfs_start_node(), pathname, parent, 1, last);
+    struct vnode* start = (pathname[0] == '/') ? rootfs->root : current_cwd();
+    return path_walk(start, pathname, parent, 1, last);
 }
 
 /* ---- 檔案操作 ---- */

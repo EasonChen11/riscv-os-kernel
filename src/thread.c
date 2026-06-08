@@ -4,6 +4,7 @@
 #include "buddy.h"
 #include "proc.h"
 #include "mm.h"
+#include "vfs.h"
 
 static int next_thread_id = 0;
 struct list_head all_threads;
@@ -37,6 +38,8 @@ struct thread* kthread_create(thread_func_t fn) {
     t->pgd_pa          = 0;   /* kernel thread；exec 之後 user thread 才設 */
     vma_init_list(&t->vma_list);
     t->stack_vma = (struct vma *)0;
+    for (int i = 0; i < THREAD_MAX_FD; i++) t->fd_table[i] = (struct file *)0;
+    t->cwd = rootfs ? rootfs->root : (struct vnode *)0;   /* vfs_init 先於 kthread 建立 */
     enqueue_runqueue(t);
     return t;
 }

@@ -7,8 +7,11 @@
 #include "signal.h"
 
 struct vma;
+struct file;
+struct vnode;
 
 #define KSTACK_SIZE (1 << 12) // 4KB kernel stack per thread
+#define THREAD_MAX_FD 16      // 每 process 開檔數，fd < 16
 
 typedef void (*thread_func_t)(void);
 
@@ -45,6 +48,8 @@ struct thread {
     unsigned long       pgd_pa;        // user process 的 PGD（PA）；kernel thread = 0
     struct list_head    vma_list;      // mmap 區段，按 start 升冪
     struct vma         *stack_vma;     // 指向 vma_list 中的 user stack vma（fault 內動態擴張用）
+    struct file        *fd_table[THREAD_MAX_FD]; // VFS file descriptor table，NULL = 空槽
+    struct vnode       *cwd;           // current working directory
 };
 
 extern struct list_head all_threads;

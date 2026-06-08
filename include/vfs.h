@@ -96,10 +96,16 @@ int vfs_write(struct file* file, const void* buf, uint64_t len);
 int vfs_mkdir(const char* pathname);
 int vfs_mount(const char* target, const char* fsname);
 
+/* file descriptor table helper（BE3 起） */
+struct thread;
+int fd_alloc(struct thread* t, struct file* f);   /* 回最小空槽 index，滿則 E_MAXFD */
+struct file* fd_get(struct thread* t, int fd);    /* 壞 fd / 未開 回 NULL */
+
 /* small helper：複製 component name（無 libc strncpy） */
 void vfs_name_copy(char* dst, const char* src, int dst_size);
 
-/* TODO(lab7): BE1/BE2 暫時自測，整合完成後移除 */
+/* TODO(lab7): BE1/BE2/BE3 暫時自測，整合完成後移除 */
 void vfs_selftest_be1(void);
+void vfs_selftest_be3_thread(void);   /* 需在 kernel thread context 跑 */
 
 #endif /* VFS_H */
