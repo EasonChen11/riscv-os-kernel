@@ -27,7 +27,7 @@
 #define PROT_KERNEL_RWX (PTE_V | PTE_R | PTE_W | PTE_X | PTE_G | PTE_A | PTE_D)
 #define PROT_KERNEL_RX  (PTE_V | PTE_R | PTE_X        | PTE_G | PTE_A | PTE_D)
 #define PROT_KERNEL_RW  (PTE_V | PTE_R | PTE_W        | PTE_G | PTE_A | PTE_D)
-#define PROT_MMIO       (PTE_V | PTE_R | PTE_W        | PTE_G | PTE_A | PTE_D)
+#define PROT_MMIO_RW    (PTE_V | PTE_R | PTE_W        | PTE_G | PTE_A | PTE_D)
 #define PROT_USER_RX    (PTE_V | PTE_R |          PTE_X | PTE_U | PTE_A | PTE_D)
 #define PROT_USER_RW    (PTE_V | PTE_R | PTE_W          | PTE_U | PTE_A | PTE_D)
 #define PROT_USER_RWX   (PTE_V | PTE_R | PTE_W | PTE_X | PTE_U | PTE_A | PTE_D)

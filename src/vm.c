@@ -80,7 +80,7 @@ unsigned long vm_clamp_ram_size(unsigned long base, unsigned long size)
     return size;
 }
 
-/* 把 [pa, pa+size) 用 4 KiB PTE 映到 high-VA linear 對應位址，PROT_MMIO（含 R/W、無 X）。
+/* 把 [pa, pa+size) 用 4 KiB PTE 映到 high-VA linear 對應位址，PROT_MMIO_RW（含 R/W、無 X）。
  * 透過共用的 map_pages 走 walk_or_alloc，PMD/PTE table 從 buddy 配，故必須在
  * buddy_init 之後呼叫。LINEAR_MAP_GIB=2 下所有 MMIO 區段的 high-VA 都在 linear map
  * 外（pgd[256] / pgd[259] 為 0），walk_or_alloc 不會遇到既有的 2 MiB leaf。 */
@@ -90,14 +90,14 @@ void mmio_finalize(unsigned long uart_pa, unsigned long uart_size,
     unsigned long uart_sz = (uart_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     unsigned long plic_sz = (plic_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
-    map_pages(g_kernel_pgd_pa, phys_to_virt(uart_pa), uart_sz, uart_pa, PROT_MMIO);
-    map_pages(g_kernel_pgd_pa, phys_to_virt(plic_pa), plic_sz, plic_pa, PROT_MMIO);
+    map_pages(g_kernel_pgd_pa, phys_to_virt(uart_pa), uart_sz, uart_pa, PROT_MMIO_RW);
+    map_pages(g_kernel_pgd_pa, phys_to_virt(plic_pa), plic_sz, plic_pa, PROT_MMIO_RW);
 
 #ifdef QEMU
     /* QEMU fw_cfg @ 0x10100000，被 video_init 用來註冊 ramfb；硬編碼，DTB 沒列 reg。
      * 一頁就夠（selector/data port + DMA reg）。 */
     unsigned long fw_pa = 0x10100000UL;
-    map_pages(g_kernel_pgd_pa, phys_to_virt(fw_pa), PAGE_SIZE, fw_pa, PROT_MMIO);
+    map_pages(g_kernel_pgd_pa, phys_to_virt(fw_pa), PAGE_SIZE, fw_pa, PROT_MMIO_RW);
 #endif
     /* map_pages 結尾自帶 sfence */
 }
