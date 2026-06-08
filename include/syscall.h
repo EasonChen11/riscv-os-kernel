@@ -19,6 +19,15 @@ enum {
     SYS_SIGRETURN  = 11,
     SYS_KILL       = 12,
     SYS_MMAP       = 13,
+    SYS_OPEN       = 14,
+    SYS_CLOSE      = 15,
+    SYS_READ       = 16,
+    SYS_WRITE      = 17,
+    SYS_MKDIR      = 18,
+    SYS_MOUNT      = 19,
+    SYS_CHDIR      = 20,
+    SYS_LSEEK64    = 21,   // Adv2
+    SYS_IOCTL      = 22,   // Adv2
     NR_SYSCALL,
 };
 
