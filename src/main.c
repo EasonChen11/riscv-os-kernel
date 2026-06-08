@@ -99,6 +99,7 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     kthread_init();
     kthread_bootstrap_idle();
 
+    kthread_create(vfs_selftest_be3_thread);  // TODO(lab7): BE3 暫時自測 thread，整合後移除
     kthread_create(shell_thread);   // shell：preemption 帶它跑
 
     start_preempt();

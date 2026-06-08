@@ -1,8 +1,9 @@
-/* TODO(lab7): BE1/BE2 暫時的 in-kernel 自測。
+/* TODO(lab7): BE1/BE2/BE3 暫時的 in-kernel 自測。
  * 整合 vfs.bin demo 測試後，刪除本檔、vfs.h 的宣告、main.c 的呼叫。 */
 #include "vfs.h"
 #include "string.h"
 #include "uart.h"
+#include "thread.h"
 
 static void t_report(const char* name, int pass) {
     uart_puts(pass ? "[PASS] " : "[FAIL] ");
@@ -59,4 +60,48 @@ void vfs_selftest_be1(void) {
     t_report("read stops at EOF", ok);
 
     uart_puts("---- selftest done ----\n");
+}
+
+/* BE3：在 kernel thread context 跑（tp 有效、cwd 已是 rootfs root），
+ * 驗證 fd table 重用、相對路徑、chdir、".." 邊界。 */
+void vfs_selftest_be3_thread(void) {
+    uart_puts("---- VFS BE3 selftest ----\n");
+    struct thread* me = kthread_get_current();
+    struct file *f0, *f1, *f2;
+
+    /* 1) fd_alloc 回最小空槽、fd_get 取回、close 後槽位可重用 */
+    vfs_open("/abc", 0, &f0);
+    vfs_open("/abc", 0, &f1);
+    vfs_open("/abc", 0, &f2);
+    int a = fd_alloc(me, f0), b = fd_alloc(me, f1), c = fd_alloc(me, f2);
+    int ok = (a == 0 && b == 1 && c == 2);
+    ok = ok && (fd_get(me, 1) == f1);
+    vfs_close(me->fd_table[1]); me->fd_table[1] = (struct file*)0;   /* 模擬 close(1) */
+    ok = ok && (fd_get(me, 1) == (struct file*)0);
+    struct file* f3; vfs_open("/abc", 0, &f3);
+    ok = ok && (fd_alloc(me, f3) == 1);     /* 重用最小空槽 1 */
+    ok = ok && (fd_get(me, 9) == (struct file*)0 && fd_get(me, -1) == (struct file*)0);
+    t_report("fd_table alloc/get/reuse", ok);
+
+    /* 2) 相對路徑 + chdir（直接設 cwd，等同 sys_chdir 內部） */
+    vfs_mkdir("/be3");
+    vfs_mkdir("/be3/sub");
+    struct vnode *v, *be3, *root = rootfs->root;
+    ok = (vfs_lookup("/be3", &be3) == E_OK);
+    me->cwd = be3;                                  /* chdir("/be3") */
+    ok = ok && (vfs_lookup("sub", &v) == E_OK);     /* 相對 */
+    ok = ok && (vfs_lookup("./sub", &v) == E_OK);
+    ok = ok && (vfs_lookup("..", &v) == E_OK) && (v == root);       /* /be3 的 parent = root */
+    ok = ok && (vfs_lookup("sub/..", &v) == E_OK) && (v == be3);
+    t_report("relative path + chdir", ok);
+
+    /* 3) ".." 在 root 的邊界：root 的 parent 仍是 root */
+    me->cwd = root;
+    ok = (vfs_lookup("..", &v) == E_OK) && (v == root);
+    ok = ok && (vfs_lookup("/..", &v) == E_OK) && (v == root);
+    t_report("'..' at root stays root", ok);
+
+    me->cwd = root;   /* 還原，避免影響後續 */
+    uart_puts("---- BE3 selftest done ----\n");
+    thread_exit();
 }
