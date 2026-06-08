@@ -8,9 +8,11 @@ build/
 user/build/
 osctest.bin
 osctest.elf
+vfs.bin
 note.md
 flow.md
 NOTES.md
 tutorial.md
+plan.md
 kernel.its.note
 qemu.dtb
