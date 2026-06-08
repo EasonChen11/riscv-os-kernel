@@ -16,6 +16,7 @@
 #include "pgtable.h"
 #include "vfs.h"
 #include "ramfs.h"
+#include "dev.h"
 // schedule.h 已 declare start_preempt
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
@@ -88,7 +89,11 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     register_filesystem(&ramfs);
     vfs_mkdir("/ramfs");
     vfs_mount("/ramfs", "ramfs");
-    vfs_selftest_be1();   // TODO(lab7): BE1/BE2/BE4 暫時自測，整合後移除
+    // Adv1：UART special file 掛在 /dev/uart（fd 0/1/2 由 exec_umode 開）
+    int uart_id = uart_dev_init();
+    vfs_mkdir("/dev");
+    vfs_mknod("/dev/uart", uart_id);
+    vfs_selftest_be1();   // TODO(lab7): BE1/BE2/BE4/Adv1 暫時自測，整合後移除
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();

@@ -82,6 +82,15 @@ void vfs_selftest_be1(void) {
     ok = (vfs_lookup("/ramfs/..", &rv) == E_OK) && (rv == rootfs->root);
     t_report("ramfs '..' crosses mount to root", ok);
 
+    /* 9) Adv1：/dev/uart special file 的 write 走 driver（marker 應出現在 console） */
+    ok = (vfs_open("/dev/uart", 0, &f) == E_OK);
+    if (ok) {
+        uart_puts("    via /dev/uart -> ");
+        ok = ok && (vfs_write(f, "[dev/uart OK]\n", 14) == 14);
+        vfs_close(f);
+    }
+    t_report("/dev/uart mknod + device write", ok);
+
     uart_puts("---- selftest done ----\n");
 }
 

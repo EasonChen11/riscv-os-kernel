@@ -11,9 +11,20 @@
 #include "pgtable.h"
 #include "mm.h"
 #include "dynalloc.h"
+#include "vfs.h"
 
 extern const char sigreturn_trampoline[];
 extern const char sigreturn_trampoline_end[];
+
+/* 首個 user process 把 /dev/uart 開成 stdin(0)/stdout(1)/stderr(2)。
+ * 只填空槽：fork 來的 child 已繼承、do_exec 來的已保留，不重開。 */
+static void setup_std_fds(struct thread *me) {
+    for (int i = 0; i < 3; i++) {
+        if (me->fd_table[i]) continue;
+        struct file *f;
+        if (vfs_open("/dev/uart", 0, &f) == E_OK) me->fd_table[i] = f;
+    }
+}
 
 /* lab6 rst：user image @ VA 0x0、user stack top @ 0x4000000000
  * exec 只配/註冊 top 1 page；sp 往下踩出去由 do_page_fault 的 expand-stack 動態擴 vma */
@@ -65,6 +76,8 @@ void exec_umode(const char *path) {
         return;
     }
     struct thread *me = kthread_get_current();
+
+    setup_std_fds(me);   /* Adv1：fd 0/1/2 → /dev/uart */
 
     /* 先存舊 PGD 等切換完再 free；否則舊 PGD 那一頁回到 buddy 後
      * 可能被 alloc_pgd / load_user_image 拿去當新 frame 寫壞，但 satp 仍指它，TLB miss 就爛 */
