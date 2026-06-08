@@ -59,6 +59,29 @@ void vfs_selftest_be1(void) {
     vfs_close(f);
     t_report("read stops at EOF", ok);
 
+    /* 7) BE4 ramfs：讀 cpio 內檔（osc.txt = 971 bytes，開頭 '\n'），write/create 失敗 */
+    ok = (vfs_open("/ramfs/osc.txt", 0, &f) == E_OK);
+    int total = 0, kk;
+    int first = -1;
+    while ((kk = vfs_read(f, buf, sizeof(buf))) > 0) {
+        if (first < 0) first = (unsigned char)buf[0];
+        total += kk;
+    }
+    vfs_close(f);
+    ok = ok && (total == 971) && (first == '\n');
+    ok = ok && (vfs_open("/ramfs/osc.txt", 0, &f) == E_OK);
+    ok = ok && (vfs_write(f, "x", 1) < 0);            /* 唯讀，寫失敗 */
+    vfs_close(f);
+    struct file* rf;
+    ok = ok && (vfs_open("/ramfs/newfile", O_CREAT, &rf) < 0);  /* create 失敗 */
+    ok = ok && (vfs_mkdir("/ramfs/newdir") < 0);                /* mkdir 失敗 */
+    t_report("ramfs read + read-only", ok);
+
+    /* 8) 跨 ramfs mount 的 ".." 回根 fs */
+    struct vnode* rv;
+    ok = (vfs_lookup("/ramfs/..", &rv) == E_OK) && (rv == rootfs->root);
+    t_report("ramfs '..' crosses mount to root", ok);
+
     uart_puts("---- selftest done ----\n");
 }
 
