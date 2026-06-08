@@ -15,6 +15,7 @@
 #include "thread.h"
 #include "pgtable.h"
 #include "vfs.h"
+#include "ramfs.h"
 // schedule.h 已 declare start_preempt
 
 #define STARTUP_HEAP_SLACK (128UL * 1024) // 128KB slack for alignment padding
@@ -83,7 +84,11 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
 
     // VFS：register tmpfs + 建 rootfs（只用 dynalloc，buddy 已就緒供寫檔配頁）
     vfs_init();
-    vfs_selftest_be1();   // TODO(lab7): BE1 暫時自測，BE4/整合後移除
+    // BE4：ramfs 唯讀掛在 /ramfs，內容鏡射 initramfs.cpio
+    register_filesystem(&ramfs);
+    vfs_mkdir("/ramfs");
+    vfs_mount("/ramfs", "ramfs");
+    vfs_selftest_be1();   // TODO(lab7): BE1/BE2/BE4 暫時自測，整合後移除
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();
