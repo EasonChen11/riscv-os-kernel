@@ -26,4 +26,8 @@ void video_init(void);
 // 只 flush 對應行的 D-cache 範圍（整片 8MB flush 太貴）。
 void video_bmp_display(unsigned int* bmp_image, int width, int height);
 
+// 把 [addr, addr+len) 的 D-cache flush 回 DRAM（QEMU 為 memory barrier）。
+// /dev/fb driver 寫完 framebuffer 也用它，避免板子殘影。
+void flush_dcache(void* addr, unsigned long len);
+
 #endif /* VIDEO_H */

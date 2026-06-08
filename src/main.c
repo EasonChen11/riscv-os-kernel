@@ -93,6 +93,10 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     int uart_id = uart_dev_init();
     vfs_mkdir("/dev");
     vfs_mknod("/dev/uart", uart_id);
+    // Adv2：framebuffer special file 掛在 /dev/fb。mknod 只註冊裝置檔不碰 FB；
+    // 真正寫 FB_BASE_VA 在 user 跑 write(/dev/fb) 時，那時下方 video_init 早已跑完。
+    int fb_id = fb_dev_init();
+    vfs_mknod("/dev/fb", fb_id);
 
     // timer：最後才開，避免 heartbeat 在其它 init 期間觸發
     timer_init();

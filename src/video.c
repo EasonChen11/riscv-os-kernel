@@ -113,7 +113,7 @@ static int fw_cfg_find_file(const char* name) {
 // OrangePi 路徑：D-cache 實際存在，display controller 直接從 DRAM 讀，不 flush
 // 會殘影／花屏。toolchain 沒 zicbom extension（gas 不認 cbo.flush mnemonic），
 // 用 .word 0x0025200F 直寫 cbo.flush 0(a0) 的 raw encoding 繞過。
-static void flush_dcache(void* addr, unsigned long len) {
+void flush_dcache(void* addr, unsigned long len) {
 #ifdef QEMU
     (void)addr;
     (void)len;
