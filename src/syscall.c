@@ -119,6 +119,18 @@ static long sys_chdir(struct trap_frame *tf) {
     return 0;
 }
 
+static long sys_lseek64(struct trap_frame *tf) {
+    struct file *f = fd_get(kthread_get_current(), (int)tf->a0);
+    if (!f || !f->f_ops->lseek64) return -1;
+    return f->f_ops->lseek64(f, (long)tf->a1, (int)tf->a2);
+}
+
+static long sys_ioctl(struct trap_frame *tf) {
+    struct file *f = fd_get(kthread_get_current(), (int)tf->a0);
+    if (!f || !f->f_ops->ioctl) return -1;
+    return f->f_ops->ioctl(f, (unsigned long)tf->a1, (void *)tf->a2);
+}
+
 // switch 而非 function pointer table：self-relocation 後 .rodata 內絕對位址不 fix-up
 void do_syscall(struct trap_frame *tf) {
     long nr = (long)tf->a7;
@@ -144,6 +156,8 @@ void do_syscall(struct trap_frame *tf) {
         case SYS_MKDIR:      ret = sys_mkdir(tf);       break;
         case SYS_MOUNT:      ret = sys_mount(tf);       break;
         case SYS_CHDIR:      ret = sys_chdir(tf);       break;
+        case SYS_LSEEK64:    ret = sys_lseek64(tf);     break;
+        case SYS_IOCTL:      ret = sys_ioctl(tf);       break;
         // do_sigreturn 已整盤覆寫 *tf（含 a0），不能再走後面的 a0 寫回
         case SYS_SIGRETURN:  do_sigreturn(tf);         return;
         default:             ret = -1;                 break;
