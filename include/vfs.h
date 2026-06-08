@@ -79,6 +79,11 @@ extern struct mount* rootfs;
 int register_filesystem(struct filesystem* fs);
 struct filesystem* find_filesystem(const char* name);
 
+/* 裝置註冊（Adv1 起）：driver 註冊 file_operations 拿到 dev id；
+ * vfs_mknod 在 fs 建一個 special file，把 f_ops 覆寫成 driver 的。 */
+int register_dev(struct file_operations* fops);
+int vfs_mknod(const char* path, int dev_id);
+
 /* 開機初始化：register tmpfs + 建 rootfs */
 void vfs_init(void);
 

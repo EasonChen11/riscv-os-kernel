@@ -23,6 +23,17 @@ struct filesystem* find_filesystem(const char* name) {
     return (struct filesystem*)0;
 }
 
+/* ---- 裝置註冊表 ---- */
+#define VFS_MAX_DEV 8
+static struct file_operations* dev_table[VFS_MAX_DEV];
+static int dev_count;
+
+int register_dev(struct file_operations* fops) {
+    if (dev_count >= VFS_MAX_DEV) return E_INVAL;
+    dev_table[dev_count] = fops;
+    return dev_count++;          /* 回 device id */
+}
+
 void vfs_name_copy(char* dst, const char* src, int dst_size) {
     int i = 0;
     for (; src[i] && i < dst_size - 1; i++) dst[i] = src[i];
@@ -148,6 +159,20 @@ int vfs_mount(const char* target, const char* fsname) {
     /* 讓 mounted root 的 ".." 跨回父 fs：parent = mount point 的父目錄 */
     mnt->root->parent = mp->parent;
     mp->mount = mnt;
+    return E_OK;
+}
+
+/* ---- mknod：借底層 fs 的 create 取得一個掛在樹上的 vnode，再把 f_ops
+ *      覆寫成 driver 的。VFS 不知道它是裝置 → 不 hard-code。 ---- */
+int vfs_mknod(const char* path, int dev_id) {
+    if (dev_id < 0 || dev_id >= VFS_MAX_DEV || !dev_table[dev_id]) return E_INVAL;
+    struct vnode* parent;
+    char comp[VFS_MAX_COMPONENT];
+    if (vfs_lookup_parent(path, &parent, comp) != E_OK) return E_NOENT;
+    while (parent->mount) parent = parent->mount->root;
+    struct vnode* v;
+    if (parent->v_ops->create(parent, &v, comp) != E_OK) return E_INVAL;
+    v->f_ops = dev_table[dev_id];
     return E_OK;
 }
 
