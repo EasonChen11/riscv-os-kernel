@@ -85,15 +85,15 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
 
     // VFS：register tmpfs + 建 rootfs（只用 dynalloc，buddy 已就緒供寫檔配頁）
     vfs_init();
-    // BE4：ramfs 唯讀掛在 /ramfs，內容鏡射 initramfs.cpio
+    // ramfs 唯讀掛在 /ramfs，內容鏡射 initramfs.cpio
     register_filesystem(&ramfs);
     vfs_mkdir("/ramfs");
     vfs_mount("/ramfs", "ramfs");
-    // Adv1：UART special file 掛在 /dev/uart（fd 0/1/2 由 exec_umode 開）
+    // UART special file 掛在 /dev/uart（fd 0/1/2 由 exec_umode 開）
     int uart_id = uart_dev_init();
     vfs_mkdir("/dev");
     vfs_mknod("/dev/uart", uart_id);
-    // Adv2：framebuffer special file 掛在 /dev/fb。mknod 只註冊裝置檔不碰 FB；
+    // framebuffer special file 掛在 /dev/fb。mknod 只註冊裝置檔不碰 FB；
     // 真正寫 FB_BASE_VA 在 user 跑 write(/dev/fb) 時，那時下方 video_init 早已跑完。
     int fb_id = fb_dev_init();
     vfs_mknod("/dev/fb", fb_id);

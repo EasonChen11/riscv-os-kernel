@@ -6,13 +6,13 @@
 
 static unsigned long heap_start, heap_end, heap_current; // heap_current 是下一個可用位址，已分配的範圍是 [heap_start, heap_current)
 
-void startup_range(void *start, void *end) {
+static void startup_range(void *start, void *end) {
     heap_start = (unsigned long)start;
     heap_end = (unsigned long)end;
     heap_current = heap_start;
 }
 
-void log_startup_heap(unsigned long heap_size) {
+static void log_startup_heap(unsigned long heap_size) {
     uart_puts("[Startup] Heap at [");
     uart_hex(heap_start);
     uart_puts(", ");
@@ -54,12 +54,4 @@ void *startup_alloc(unsigned long size, unsigned long align) {
     }
     heap_current = aligned_current + size;
     return (void*)aligned_current;
-}
-
-unsigned long startup_used(void) {
-    return heap_current - heap_start;
-}
-
-unsigned long startup_base(void) {
-    return heap_start;
 }
