@@ -21,7 +21,7 @@ static void cmd_help(void) {
     uart_puts("  help       - show all commands.\n");
     uart_puts("  hello      - print Hello, World.\n");
     uart_puts("  info       - print system info.\n");
-    uart_puts("  ls         - list initrd files.\n");
+    uart_puts("  ls         - list /ramfs files.\n");
     uart_puts("  cat        - print file content. usage: cat <filename>\n");
     uart_puts("  exec       - execute user program. usage: exec <filename>\n");
     uart_puts("  setTimeout - schedule a message. usage: setTimeout <sec> <message>\n");
