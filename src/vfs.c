@@ -40,9 +40,10 @@ void vfs_name_copy(char* dst, const char* src, int dst_size) {
     dst[i] = '\0';
 }
 
-/* ---- 解析起點：絕對路徑用 rootfs root；相對路徑用 current thread 的 cwd。
- *      current_cwd 只在相對路徑時呼叫（user syscall context，tp 有效）；
- *      boot 期 selftest 全用絕對路徑，不會碰到無效 tp。 ---- */
+/* ---- 解析起點：一律回 current thread 的 cwd（相對路徑由 path_walk 採用，絕對路徑
+ *      則由 path_walk 改用 rootfs root，傳入的 cwd 不會被用到）。boot 期 tp 被 start.S
+ *      清 0，kthread_get_current() 回 NULL，null guard 退回 rootfs->root，故開機階段
+ *      解析絕對路徑亦安全。 ---- */
 static struct vnode* current_cwd(void) {
     struct thread* t = kthread_get_current();
     if (t && t->cwd) return t->cwd;
@@ -106,13 +107,11 @@ static int path_walk(struct vnode* start, const char* path,
 }
 
 int vfs_lookup(const char* pathname, struct vnode** target) {
-    struct vnode* start = (pathname[0] == '/') ? rootfs->root : current_cwd();
-    return path_walk(start, pathname, target, 0, (char*)0);
+    return path_walk(current_cwd(), pathname, target, 0, (char*)0);
 }
 
 int vfs_lookup_parent(const char* pathname, struct vnode** parent, char* last) {
-    struct vnode* start = (pathname[0] == '/') ? rootfs->root : current_cwd();
-    return path_walk(start, pathname, parent, 1, last);
+    return path_walk(current_cwd(), pathname, parent, 1, last);
 }
 
 /* ---- 檔案操作 ---- */
