@@ -40,6 +40,8 @@ struct vnode_operations {
     int (*lookup)(struct vnode* dir, struct vnode** target, const char* component_name);
     int (*create)(struct vnode* dir, struct vnode** target, const char* component_name);
     int (*mkdir) (struct vnode* dir, struct vnode** target, const char* component_name);
+    /* 列出 dir 的第 index 筆 child：填 name/size，回 E_OK；index 越界回 E_NOENT 表結束 */
+    int (*readdir)(struct vnode* dir, int index, char* name, uint64_t* size);
 };
 
 struct vnode {
@@ -90,6 +92,9 @@ void vfs_init(void);
 /* 路徑解析 */
 int vfs_lookup(const char* pathname, struct vnode** target);
 int vfs_lookup_parent(const char* pathname, struct vnode** parent, char* last);
+
+/* 目錄列舉：解析 pathname 為目錄 vnode，取第 index 筆 child 的 name/size */
+int vfs_readdir(const char* pathname, int index, char* name, uint64_t* size);
 
 /* 檔案操作（VFS 層） */
 int vfs_open(const char* pathname, int flags, struct file** target);

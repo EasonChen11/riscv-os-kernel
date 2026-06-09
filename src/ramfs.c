@@ -68,6 +68,16 @@ static int ramfs_lookup(struct vnode* dir, struct vnode** target, const char* na
 static int ramfs_create(struct vnode* d, struct vnode** t, const char* nm) { return E_RDONLY; }
 static int ramfs_mkdir (struct vnode* d, struct vnode** t, const char* nm) { return E_RDONLY; }
 
+static int ramfs_readdir(struct vnode* dir, int index, char* name, uint64_t* size) {
+    struct ramfs_node* d = dir->internal;
+    if (!d->is_dir) return E_NOTDIR;
+    if (index < 0 || index >= d->n_entries) return E_NOENT;
+    struct ramfs_node* e = d->entries[index]->internal;
+    vfs_name_copy(name, e->name, VFS_MAX_COMPONENT);
+    if (size) *size = e->size;
+    return E_OK;
+}
+
 /* ---- f_ops（唯讀：write 失敗） ---- */
 static int ramfs_open(struct vnode* file_node, struct file** target) {
     struct file* f = dynalloc_alloc(sizeof(struct file));
@@ -92,9 +102,10 @@ static int ramfs_read(struct file* file, void* buf, uint64_t len) {
 static int ramfs_write(struct file* f, const void* b, uint64_t n) { return E_RDONLY; }
 
 static struct vnode_operations ramfs_v_ops = {
-    .lookup = ramfs_lookup,
-    .create = ramfs_create,
-    .mkdir  = ramfs_mkdir,
+    .lookup  = ramfs_lookup,
+    .create  = ramfs_create,
+    .mkdir   = ramfs_mkdir,
+    .readdir = ramfs_readdir,
 };
 
 static struct file_operations ramfs_f_ops = {

@@ -114,6 +114,15 @@ int vfs_lookup_parent(const char* pathname, struct vnode** parent, char* last) {
     return path_walk(current_cwd(), pathname, parent, 1, last);
 }
 
+int vfs_readdir(const char* pathname, int index, char* name, uint64_t* size) {
+    struct vnode* dir;
+    int ret = vfs_lookup(pathname, &dir);
+    if (ret != E_OK) return ret;
+    while (dir->mount) dir = dir->mount->root;   /* 跨進被掛載的 fs */
+    if (!dir->v_ops->readdir) return E_INVAL;
+    return dir->v_ops->readdir(dir, index, name, size);
+}
+
 /* ---- 檔案操作 ---- */
 int vfs_open(const char* pathname, int flags, struct file** target) {
     struct vnode* node;

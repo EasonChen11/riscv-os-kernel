@@ -70,6 +70,16 @@ static int tmpfs_mkdir(struct vnode* dir, struct vnode** target, const char* nam
     return E_OK;
 }
 
+static int tmpfs_readdir(struct vnode* dir, int index, char* name, uint64_t* size) {
+    struct tmpfs_node* d = dir->internal;
+    if (d->type != TMPFS_DIR) return E_NOTDIR;
+    if (index < 0 || index >= d->n_entries) return E_NOENT;
+    struct tmpfs_node* e = d->entries[index]->internal;
+    vfs_name_copy(name, e->name, VFS_MAX_COMPONENT);
+    if (size) *size = e->size;
+    return E_OK;
+}
+
 /* ---- f_ops ---- */
 static int tmpfs_open(struct vnode* file_node, struct file** target) {
     struct file* f = dynalloc_alloc(sizeof(struct file));
@@ -112,9 +122,10 @@ static int tmpfs_write(struct file* file, const void* buf, uint64_t len) {
 }
 
 static struct vnode_operations tmpfs_v_ops = {
-    .lookup = tmpfs_lookup,
-    .create = tmpfs_create,
-    .mkdir  = tmpfs_mkdir,
+    .lookup  = tmpfs_lookup,
+    .create  = tmpfs_create,
+    .mkdir   = tmpfs_mkdir,
+    .readdir = tmpfs_readdir,
 };
 
 static struct file_operations tmpfs_f_ops = {

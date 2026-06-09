@@ -7,6 +7,7 @@
 #include "timer.h"
 #include "proc.h"
 #include "exec.h"
+#include "vfs.h"
 
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_ptr = 0;
@@ -59,6 +60,45 @@ static void cmd_setTimeout(const char* args) {
     setTimeout(sec, args);
 }
 
+// 走 VFS 列出 /ramfs（唯讀鏡射 initramfs.cpio）下所有檔案的 size 與名稱
+static void cmd_ls(void) {
+    char name[VFS_MAX_COMPONENT];
+    uint64_t size;
+    int count = 0;
+    while (vfs_readdir("/ramfs", count, name, &size) == E_OK) count++;
+    uart_puts("Total ");
+    uart_int(count);
+    uart_puts(" files:\n");
+    for (int i = 0; vfs_readdir("/ramfs", i, name, &size) == E_OK; i++) {
+        uart_int((int)size);
+        uart_putc('\t');
+        uart_puts(name);
+        uart_putc('\n');
+    }
+    uart_putc('\n');
+}
+
+// 走 VFS 開 /ramfs/<name> 並把內容逐塊讀出印到終端
+static void cmd_cat(const char* name) {
+    char path[VFS_MAX_PATH];
+    int pi = 0;
+    for (const char* s = "/ramfs/"; *s && pi < VFS_MAX_PATH - 1; s++) path[pi++] = *s;
+    for (const char* s = name;      *s && pi < VFS_MAX_PATH - 1; s++) path[pi++] = *s;
+    path[pi] = '\0';
+
+    struct file* f;
+    if (vfs_open(path, 0, &f) != E_OK) {
+        uart_puts("File not found\n");
+        return;
+    }
+    char buf[64];
+    int k;
+    while ((k = vfs_read(f, buf, sizeof(buf))) > 0)
+        for (int i = 0; i < k; i++) uart_putc(buf[i]);
+    uart_putc('\n');
+    vfs_close(f);
+}
+
 static void cmd_unknown(const char* cmd) {
     uart_puts("Unknown command : ");
     uart_puts(cmd);
@@ -73,9 +113,11 @@ static void exec_cmd(const char* cmd) {
     } else if (strcmp(cmd, "info") == 0) {
         cmd_info();
     } else if (strcmp(cmd, "ls") == 0) {
-        initrd_list(g_initrd_base);
+        cmd_ls();                              // 走 VFS 列 /ramfs
+        // 舊路徑（直讀 cpio archive）：initrd_list(g_initrd_base);
     } else if (strncmp(cmd, "cat ", 4) == 0) {
-        initrd_cat(g_initrd_base, cmd + 4);
+        cmd_cat(cmd + 4);                      // 走 VFS 讀 /ramfs/<file>
+        // 舊路徑（直讀 cpio archive）：initrd_cat(g_initrd_base, cmd + 4);
     } else if (strncmp(cmd, "exec ", 5) == 0) {
         const char *path = cmd + 5;
         if (*path == 0) {
