@@ -30,8 +30,8 @@ struct filesystem;
 struct file_operations {
     int  (*open) (struct vnode* file_node, struct file** target);
     int  (*close)(struct file* file);
-    int  (*read) (struct file* file, void* buf, uint64_t len);
-    int  (*write)(struct file* file, const void* buf, uint64_t len);
+    long (*read) (struct file* file, void* buf, uint64_t len);
+    long (*write)(struct file* file, const void* buf, uint64_t len);
     long (*lseek64)(struct file* file, long offset, int whence);     /* Adv2 */
     int  (*ioctl)(struct file* file, unsigned long request, void* arg); /* Adv2 */
 };
@@ -99,8 +99,8 @@ int vfs_readdir(const char* pathname, int index, char* name, uint64_t* size);
 /* 檔案操作（VFS 層） */
 int vfs_open(const char* pathname, int flags, struct file** target);
 int vfs_close(struct file* file);
-int vfs_read(struct file* file, void* buf, uint64_t len);
-int vfs_write(struct file* file, const void* buf, uint64_t len);
+long vfs_read(struct file* file, void* buf, uint64_t len);
+long vfs_write(struct file* file, const void* buf, uint64_t len);
 
 /* 目錄 / 掛載（BE2 起） */
 int vfs_mkdir(const char* pathname);

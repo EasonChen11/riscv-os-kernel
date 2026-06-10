@@ -137,8 +137,8 @@ int vfs_open(const char* pathname, int flags, struct file** target) {
 }
 
 int vfs_close(struct file* file)                          { return file->f_ops->close(file); }
-int vfs_read(struct file* file, void* buf, uint64_t len)  { return file->f_ops->read(file, buf, len); }
-int vfs_write(struct file* file, const void* buf, uint64_t len){ return file->f_ops->write(file, buf, len); }
+long vfs_read(struct file* file, void* buf, uint64_t len)  { return file->f_ops->read(file, buf, len); }
+long vfs_write(struct file* file, const void* buf, uint64_t len){ return file->f_ops->write(file, buf, len); }
 
 /* ---- 目錄 / 掛載 ---- */
 int vfs_mkdir(const char* pathname) {

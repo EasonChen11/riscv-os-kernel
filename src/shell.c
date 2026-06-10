@@ -92,9 +92,9 @@ static void cmd_cat(const char* name) {
         return;
     }
     char buf[64];
-    int k;
+    long k;
     while ((k = vfs_read(f, buf, sizeof(buf))) > 0)
-        for (int i = 0; i < k; i++) uart_putc(buf[i]);
+        for (long i = 0; i < k; i++) uart_putc(buf[i]);
     uart_putc('\n');
     vfs_close(f);
 }

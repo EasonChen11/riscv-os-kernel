@@ -24,16 +24,16 @@ static int fb_close(struct file* f) {
     return E_OK;
 }
 
-static int fb_read(struct file* f, void* buf, uint64_t len) {
+static long fb_read(struct file* f, void* buf, uint64_t len) {
     return E_INVAL;        /* write-only */
 }
 
-static int fb_write(struct file* f, const void* buf, uint64_t len) {
+static long fb_write(struct file* f, const void* buf, uint64_t len) {
     void* dst = (void*)(FB_BASE_VA + f->f_pos);
     memcpy(dst, buf, len);
     flush_dcache(dst, len);
     f->f_pos += len;       /* 推進，連續 write 接著畫 */
-    return (int)len;
+    return (long)len;
 }
 
 static long fb_lseek64(struct file* f, long offset, int whence) {

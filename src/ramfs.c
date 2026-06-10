@@ -90,16 +90,16 @@ static int ramfs_open(struct vnode* file_node, struct file** target) {
 }
 static int ramfs_close(struct file* file) { dynalloc_free(file); return E_OK; }
 
-static int ramfs_read(struct file* file, void* buf, uint64_t len) {
+static long ramfs_read(struct file* file, void* buf, uint64_t len) {
     struct ramfs_node* n = file->vnode->internal;
     if (n->is_dir) return E_INVAL;
     uint64_t remain = (file->f_pos < n->size) ? n->size - file->f_pos : 0;
     uint64_t k = (len < remain) ? len : remain;
     if (k) memcpy(buf, n->content + file->f_pos, k);
     file->f_pos += k;
-    return (int)k;
+    return (long)k;
 }
-static int ramfs_write(struct file* f, const void* b, uint64_t n) { return E_RDONLY; }
+static long ramfs_write(struct file* f, const void* b, uint64_t n) { return E_RDONLY; }
 
 static struct vnode_operations ramfs_v_ops = {
     .lookup  = ramfs_lookup,

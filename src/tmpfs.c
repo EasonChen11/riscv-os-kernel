@@ -96,17 +96,17 @@ static int tmpfs_close(struct file* file) {
     return E_OK;
 }
 
-static int tmpfs_read(struct file* file, void* buf, uint64_t len) {
+static long tmpfs_read(struct file* file, void* buf, uint64_t len) {
     struct tmpfs_node* n = file->vnode->internal;
     if (n->type != TMPFS_FILE) return E_INVAL;
     uint64_t remain = (file->f_pos < n->size) ? n->size - file->f_pos : 0;
     uint64_t k = (len < remain) ? len : remain;     /* min(len, 可讀)；到 EOF 停 */
     if (k && n->data) memcpy(buf, n->data + file->f_pos, k);
     file->f_pos += k;
-    return (int)k;
+    return (long)k;
 }
 
-static int tmpfs_write(struct file* file, const void* buf, uint64_t len) {
+static long tmpfs_write(struct file* file, const void* buf, uint64_t len) {
     struct tmpfs_node* n = file->vnode->internal;
     if (n->type != TMPFS_FILE) return E_INVAL;
     if (!n->data) {                                 /* 第一次寫才配資料頁 */
@@ -118,7 +118,7 @@ static int tmpfs_write(struct file* file, const void* buf, uint64_t len) {
     if (k) memcpy(n->data + file->f_pos, buf, k);
     file->f_pos += k;
     if (file->f_pos > n->size) n->size = file->f_pos;
-    return (int)k;
+    return (long)k;
 }
 
 static struct vnode_operations tmpfs_v_ops = {

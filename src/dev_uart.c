@@ -20,16 +20,16 @@ static int uart_dev_close(struct file* f) {
     return E_OK;
 }
 
-static int uart_dev_read(struct file* f, void* buf, uint64_t len) {
+static long uart_dev_read(struct file* f, void* buf, uint64_t len) {
     char* b = buf;
     for (uint64_t i = 0; i < len; i++) b[i] = uart_getc();   /* 阻塞讀 */
-    return (int)len;
+    return (long)len;
 }
 
-static int uart_dev_write(struct file* f, const void* buf, uint64_t len) {
+static long uart_dev_write(struct file* f, const void* buf, uint64_t len) {
     const char* b = buf;
     for (uint64_t i = 0; i < len; i++) uart_putc(b[i]);
-    return (int)len;
+    return (long)len;
 }
 
 static struct file_operations uart_dev_fops = {
