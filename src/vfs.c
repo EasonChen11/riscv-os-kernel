@@ -123,21 +123,30 @@ int vfs_readdir(const char* pathname, int index, char* name, uint64_t* size) {
 
 /* ---- 檔案操作 ---- */
 int vfs_open(const char* pathname, int flags, struct file** target) {
-    struct vnode* node;
-    int ret = vfs_lookup(pathname, &node);
-    if (ret == E_OK)
-        return node->f_ops->open(node, target);
+    /* 一次走到 parent + 末端 component，避免存在判斷與建檔各走一遍 full path */
+    struct vnode* parent;
+    char comp[VFS_MAX_COMPONENT] = "";
+    int ret = vfs_lookup_parent(pathname, &parent, comp);
+    if (ret != E_OK) return ret;
 
-    if (flags & O_CREAT) {
-        struct vnode* parent;
-        char comp[VFS_MAX_COMPONENT];
-        if (vfs_lookup_parent(pathname, &parent, comp) != E_OK) return E_NOENT;
-        parent = vnode_follow_mount(parent);
+    /* 末端為 ""/"."/".."（指向目錄本身或上層）：交給完整 lookup 處理目錄語意 */
+    if (comp[0] == '\0' || strcmp(comp, ".") == 0 || strcmp(comp, "..") == 0) {
+        struct vnode* node;
+        if (vfs_lookup(pathname, &node) != E_OK) return E_NOENT;
+        return node->f_ops->open(node, target);
+    }
+
+    parent = vnode_follow_mount(parent);
+    struct vnode* node;
+    if (parent->v_ops->lookup(parent, &node, comp) == E_OK)
+        return node->f_ops->open(node, target);   /* 已存在：直接開 */
+
+    if (flags & O_CREAT) {                          /* 不存在且要建立 */
         struct vnode* newv;
         if (parent->v_ops->create(parent, &newv, comp) != E_OK) return E_INVAL;
         return newv->f_ops->open(newv, target);
     }
-    return ret;
+    return E_NOENT;
 }
 
 int vfs_close(struct file* file)                          { return file->f_ops->close(file); }
