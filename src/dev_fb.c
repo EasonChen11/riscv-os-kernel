@@ -29,16 +29,21 @@ static long fb_read(struct file* f, void* buf, uint64_t len) {
 }
 
 static long fb_write(struct file* f, const void* buf, uint64_t len) {
+    if (f->f_pos >= FB_SIZE) return 0;             /* offset 已到尾端，無可寫空間 */
+    uint64_t space = FB_SIZE - f->f_pos;
+    uint64_t k = (len < space) ? len : space;      /* clamp，不寫出 framebuffer 範圍 */
     void* dst = (void*)(FB_BASE_VA + f->f_pos);
-    memcpy(dst, buf, len);
-    flush_dcache(dst, len);
-    f->f_pos += len;       /* 推進，連續 write 接著畫 */
-    return (long)len;
+    memcpy(dst, buf, k);
+    flush_dcache(dst, k);
+    f->f_pos += k;         /* 推進，連續 write 接著畫 */
+    return (long)k;
 }
 
 static long fb_lseek64(struct file* f, long offset, int whence) {
-    if (whence == SEEK_SET) { f->f_pos = (uint64_t)offset; return (long)f->f_pos; }
-    return E_INVAL;
+    if (whence != SEEK_SET) return E_INVAL;
+    if (offset < 0 || (uint64_t)offset > FB_SIZE) return E_INVAL;   /* 拒絕越界 offset */
+    f->f_pos = (uint64_t)offset;
+    return (long)f->f_pos;
 }
 
 static int fb_ioctl(struct file* f, unsigned long request, void* arg) {

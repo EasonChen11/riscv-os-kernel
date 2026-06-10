@@ -4,6 +4,7 @@
 #define FB_WIDTH  1920
 #define FB_HEIGHT 1080
 #define FB_BPP    4               /* XRGB8888 = 4 byte/pixel */
+#define FB_SIZE   ((uint64_t)FB_WIDTH * FB_HEIGHT * FB_BPP)   /* framebuffer 總位元組數 */
 
 // 兩條編譯路徑：
 //   QEMU define（Makefile run target 加 -DQEMU）：FB_BASE 自選空閒 RAM，
