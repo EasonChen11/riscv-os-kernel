@@ -34,12 +34,6 @@ int register_dev(struct file_operations* fops) {
     return dev_count++;          /* 回 device id */
 }
 
-void vfs_name_copy(char* dst, const char* src, int dst_size) {
-    int i = 0;
-    for (; src[i] && i < dst_size - 1; i++) dst[i] = src[i];
-    dst[i] = '\0';
-}
-
 /* ---- 解析起點：一律回 current thread 的 cwd（相對路徑由 path_walk 採用，絕對路徑
  *      則由 path_walk 改用 rootfs root，傳入的 cwd 不會被用到）。boot 期 tp 被 start.S
  *      清 0，kthread_get_current() 回 NULL，null guard 退回 rootfs->root，故開機階段
@@ -86,7 +80,7 @@ static int path_walk(struct vnode* start, const char* path,
         int is_last = (*q == '\0');
 
         if (is_last && stop_at_parent) {
-            vfs_name_copy(last, comp, VFS_MAX_COMPONENT);
+            strlcpy(last, comp, VFS_MAX_COMPONENT);
             *out = cur;
             return E_OK;
         }

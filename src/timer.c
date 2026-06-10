@@ -1,4 +1,5 @@
 #include "timer.h"
+#include "string.h"
 #include "sbi.h"
 #include "uart.h"
 #include "fdt.h"
@@ -147,9 +148,7 @@ void setTimeout(int sec, const char* msg) {
         return;
     }
     ctx->cmd_tick = now;
-    unsigned long i = 0;
-    for (; msg[i] && i < TIMER_MSG_LEN - 1; i++) ctx->msg[i] = msg[i];
-    ctx->msg[i] = '\0';
+    strlcpy(ctx->msg, msg, TIMER_MSG_LEN);
 
     add_timer(setTimeout_cb, ctx, sec);
 

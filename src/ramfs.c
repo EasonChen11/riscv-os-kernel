@@ -22,7 +22,7 @@ static struct file_operations  ramfs_f_ops;
 static struct vnode* ramfs_new_vnode(int is_dir, const char* name, struct vnode* parent) {
     struct vnode*      v = dynalloc_alloc(sizeof(struct vnode));
     struct ramfs_node* n = dynalloc_alloc(sizeof(struct ramfs_node));
-    vfs_name_copy(n->name, name, VFS_MAX_COMPONENT);
+    strlcpy(n->name, name, VFS_MAX_COMPONENT);
     n->is_dir = is_dir;
     n->content = (const char*)0;
     n->size = 0;
@@ -73,7 +73,7 @@ static int ramfs_readdir(struct vnode* dir, int index, char* name, uint64_t* siz
     if (!d->is_dir) return E_NOTDIR;
     if (index < 0 || index >= d->n_entries) return E_NOENT;
     struct ramfs_node* e = d->entries[index]->internal;
-    vfs_name_copy(name, e->name, VFS_MAX_COMPONENT);
+    strlcpy(name, e->name, VFS_MAX_COMPONENT);
     if (size) *size = e->size;
     return E_OK;
 }

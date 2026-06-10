@@ -11,7 +11,7 @@ static struct vnode* tmpfs_new_vnode(enum tmpfs_type type, const char* name,
                                      struct vnode* parent) {
     struct vnode*      v = dynalloc_alloc(sizeof(struct vnode));
     struct tmpfs_node* n = dynalloc_alloc(sizeof(struct tmpfs_node));
-    vfs_name_copy(n->name, name, VFS_MAX_COMPONENT);
+    strlcpy(n->name, name, VFS_MAX_COMPONENT);
     n->type = type;
     n->vnode = v;
     n->n_entries = 0;
@@ -75,7 +75,7 @@ static int tmpfs_readdir(struct vnode* dir, int index, char* name, uint64_t* siz
     if (d->type != TMPFS_DIR) return E_NOTDIR;
     if (index < 0 || index >= d->n_entries) return E_NOENT;
     struct tmpfs_node* e = d->entries[index]->internal;
-    vfs_name_copy(name, e->name, VFS_MAX_COMPONENT);
+    strlcpy(name, e->name, VFS_MAX_COMPONENT);
     if (size) *size = e->size;
     return E_OK;
 }

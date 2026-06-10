@@ -111,7 +111,4 @@ struct thread;
 int fd_alloc(struct thread* t, struct file* f);   /* 回最小空槽 index，滿則 E_MAXFD */
 struct file* fd_get(struct thread* t, int fd);    /* 壞 fd / 未開 回 NULL */
 
-/* small helper：複製 component name（無 libc strncpy） */
-void vfs_name_copy(char* dst, const char* src, int dst_size);
-
 #endif /* VFS_H */
