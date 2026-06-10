@@ -6,9 +6,11 @@
 
 #define RAMFS_MAX_ENTRIES 64
 
+enum ramfs_type { RAMFS_FILE, RAMFS_DIR };
+
 struct ramfs_node {
     char  name[VFS_MAX_COMPONENT];
-    int   is_dir;
+    enum ramfs_type type;
     const char* content;            /* 指向 cpio 內資料，不複製 */
     uint64_t size;
     struct vnode* vnode;
@@ -19,11 +21,11 @@ struct ramfs_node {
 static struct vnode_operations ramfs_v_ops;
 static struct file_operations  ramfs_f_ops;
 
-static struct vnode* ramfs_new_vnode(int is_dir, const char* name, struct vnode* parent) {
+static struct vnode* ramfs_new_vnode(enum ramfs_type type, const char* name, struct vnode* parent) {
     struct vnode*      v = dynalloc_alloc(sizeof(struct vnode));
     struct ramfs_node* n = dynalloc_alloc(sizeof(struct ramfs_node));
     strlcpy(n->name, name, VFS_MAX_COMPONENT);
-    n->is_dir = is_dir;
+    n->type = type;
     n->content = (const char*)0;
     n->size = 0;
     n->vnode = v;
@@ -38,7 +40,7 @@ static struct vnode* ramfs_new_vnode(int is_dir, const char* name, struct vnode*
 
 int ramfs_setup_mount(struct filesystem* fs, struct mount* mount) {
     mount->fs = fs;
-    mount->root = ramfs_new_vnode(1, "/", (struct vnode*)0);
+    mount->root = ramfs_new_vnode(RAMFS_DIR, "/", (struct vnode*)0);
     struct ramfs_node* root = mount->root->internal;
 
     struct cpio_entry_info info;
@@ -46,7 +48,7 @@ int ramfs_setup_mount(struct filesystem* fs, struct mount* mount) {
     while ((rd = parse_one_entry(rd, &info)) != (void*)0) {
         if (strcmp(info.filename, ".") == 0) continue;     /* 跳過目錄佔位 */
         if (root->n_entries >= RAMFS_MAX_ENTRIES) break;
-        struct vnode* v = ramfs_new_vnode(0, info.filename, mount->root);
+        struct vnode* v = ramfs_new_vnode(RAMFS_FILE, info.filename, mount->root);
         struct ramfs_node* n = v->internal;
         n->content = info.filecontent;
         n->size = (uint64_t)info.filesize;
@@ -58,7 +60,7 @@ int ramfs_setup_mount(struct filesystem* fs, struct mount* mount) {
 /* ---- v_ops（唯讀：create/mkdir 失敗） ---- */
 static int ramfs_lookup(struct vnode* dir, struct vnode** target, const char* name) {
     struct ramfs_node* d = dir->internal;
-    if (!d->is_dir) return E_NOTDIR;
+    if (d->type != RAMFS_DIR) return E_NOTDIR;
     for (int i = 0; i < d->n_entries; i++) {
         struct ramfs_node* e = d->entries[i]->internal;
         if (strcmp(e->name, name) == 0) { *target = d->entries[i]; return E_OK; }
@@ -70,7 +72,7 @@ static int ramfs_mkdir (struct vnode* d, struct vnode** t, const char* nm) { ret
 
 static int ramfs_readdir(struct vnode* dir, int index, char* name, uint64_t* size) {
     struct ramfs_node* d = dir->internal;
-    if (!d->is_dir) return E_NOTDIR;
+    if (d->type != RAMFS_DIR) return E_NOTDIR;
     if (index < 0 || index >= d->n_entries) return E_NOENT;
     struct ramfs_node* e = d->entries[index]->internal;
     strlcpy(name, e->name, VFS_MAX_COMPONENT);
@@ -92,7 +94,7 @@ static int ramfs_close(struct file* file) { dynalloc_free(file); return E_OK; }
 
 static long ramfs_read(struct file* file, void* buf, uint64_t len) {
     struct ramfs_node* n = file->vnode->internal;
-    if (n->is_dir) return E_INVAL;
+    if (n->type != RAMFS_FILE) return E_INVAL;
     uint64_t remain = (file->f_pos < n->size) ? n->size - file->f_pos : 0;
     uint64_t k = (len < remain) ? len : remain;
     if (k) memcpy(buf, n->content + file->f_pos, k);
