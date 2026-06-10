@@ -7,6 +7,7 @@
 #include "irq.h"
 #include "vm.h"
 #include "mm.h"
+#include "vfs.h"
 
 static struct list_head runqueue;
 struct list_head zombie_list;          // proc.c 也會 enqueue（waitpid reap、stop）
@@ -39,6 +40,8 @@ void kill_zombies(void) {
         uart_puts("[zombie freed pid=");
         uart_hex(z->pid);
         uart_puts("]\n");
+        for (int i = 0; i < THREAD_MAX_FD; i++)   /* 釋放未手動 close 的 file handle */
+            if (z->fd_table[i]) vfs_close(z->fd_table[i]);
         buddy_free_pages(z->kstack);
         if (z->pgd_pa) free_pgd(z->pgd_pa);   /* lab6: 釋放 user PGD + 走訪所有 leaf page */
         vma_free_all(&z->vma_list);
