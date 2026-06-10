@@ -39,22 +39,26 @@ static struct vnode* ramfs_new_vnode(enum ramfs_type type, const char* name, str
 }
 
 int ramfs_setup_mount(struct filesystem* fs, struct mount* mount) {
-    mount->fs = fs;
+    mount->fs   = fs;
     mount->root = ramfs_new_vnode(RAMFS_DIR, "/", (struct vnode*)0);
-    struct ramfs_node* root = mount->root->internal;
+    return E_OK;
+}
 
+/* 把 initramfs.cpio 的內容填進 ramfs root vnode。
+ * 與 setup_mount 分開，方便驗證空 ramfs 與填入後的差異。 */
+void ramfs_populate_cpio(struct vnode* root_vnode) {
+    struct ramfs_node* root = root_vnode->internal;
     struct cpio_entry_info info;
     const void* rd = g_initrd_base;
     while ((rd = parse_one_entry(rd, &info)) != (void*)0) {
-        if (strcmp(info.filename, ".") == 0) continue;     /* 跳過目錄佔位 */
+        if (strcmp(info.filename, ".") == 0) continue;
         if (root->n_entries >= RAMFS_MAX_ENTRIES) break;
-        struct vnode* v = ramfs_new_vnode(RAMFS_FILE, info.filename, mount->root);
+        struct vnode* v = ramfs_new_vnode(RAMFS_FILE, info.filename, root_vnode);
         struct ramfs_node* n = v->internal;
         n->content = info.filecontent;
         n->size = (uint64_t)info.filesize;
         root->entries[root->n_entries++] = v;
     }
-    return E_OK;
 }
 
 /* ---- v_ops（唯讀：create/mkdir 失敗） ---- */

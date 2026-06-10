@@ -7,4 +7,6 @@
  * read 直接從 cpio 原址讀（不複製）；write/create/mkdir 一律失敗。 */
 extern struct filesystem ramfs;
 
+void ramfs_populate_cpio(struct vnode* root_vnode);
+
 #endif /* RAMFS_H */

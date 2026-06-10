@@ -85,10 +85,16 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
 
     // VFS：register tmpfs + 建 rootfs（只用 dynalloc，buddy 已就緒供寫檔配頁）
     vfs_init();
-    // ramfs 唯讀掛在 /ramfs，內容鏡射 initramfs.cpio
+    // ramfs 唯讀掛在 /ramfs
     register_filesystem(&ramfs);
     vfs_mkdir("/ramfs");
     vfs_mount("/ramfs", "ramfs");
+    // 填入 initramfs.cpio 內容到 /ramfs root vnode，供 shell cat /ramfs/* 讀取
+    struct vnode* ramfs_root;
+    vfs_lookup("/ramfs", &ramfs_root);
+    ramfs_populate_cpio(ramfs_root);
+    
+    
     // UART special file 掛在 /dev/uart（fd 0/1/2 由 exec_umode 開）
     int uart_id = uart_dev_init();
     vfs_mkdir("/dev");
