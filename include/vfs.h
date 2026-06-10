@@ -89,6 +89,9 @@ int vfs_mknod(const char* path, int dev_id);
 /* 開機初始化：register tmpfs + 建 rootfs */
 void vfs_init(void);
 
+/* 若 vnode 是 mount point，降到被掛載 fs 的 root（可能多層） */
+struct vnode* vnode_follow_mount(struct vnode* v);
+
 /* 路徑解析 */
 int vfs_lookup(const char* pathname, struct vnode** target);
 int vfs_lookup_parent(const char* pathname, struct vnode** parent, char* last);

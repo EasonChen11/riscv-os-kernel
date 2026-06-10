@@ -56,11 +56,17 @@ struct file* fd_get(struct thread* t, int fd) {
     return t->fd_table[fd];
 }
 
+/* 若 vnode 是 mount point，降到被掛載 fs 的 root（可能多層掛載） */
+struct vnode* vnode_follow_mount(struct vnode* v) {
+    while (v->mount) v = v->mount->root;
+    return v;
+}
+
 /* ---- 路徑走訪：支援絕對/相對、連續斜線、"."、".."；跨 mount 於每一步 ---- */
 static int path_walk(struct vnode* start, const char* path,
                      struct vnode** out, int stop_at_parent, char* last) {
     struct vnode* cur = (path[0] == '/') ? rootfs->root : start;
-    while (cur->mount) cur = cur->mount->root;   /* 起點本身可能是 mount point */
+    cur = vnode_follow_mount(cur);               /* 起點本身可能是 mount point */
 
     const char* p = path;
     while (*p) {
@@ -86,15 +92,13 @@ static int path_walk(struct vnode* start, const char* path,
         }
         if (strcmp(comp, ".") == 0 || comp[0] == '\0') continue;
         if (strcmp(comp, "..") == 0) {
-            cur = cur->parent;                    /* root 的 parent 指自己 */
-            while (cur->mount) cur = cur->mount->root;
+            cur = vnode_follow_mount(cur->parent); /* root 的 parent 指自己 */
             continue;
         }
         struct vnode* next;
         int ret = cur->v_ops->lookup(cur, &next, comp);
         if (ret != E_OK) return ret;
-        while (next->mount) next = next->mount->root;   /* 跨進被掛載的 fs */
-        cur = next;
+        cur = vnode_follow_mount(next);           /* 跨進被掛載的 fs */
     }
     *out = cur;
     return E_OK;
@@ -112,7 +116,7 @@ int vfs_readdir(const char* pathname, int index, char* name, uint64_t* size) {
     struct vnode* dir;
     int ret = vfs_lookup(pathname, &dir);
     if (ret != E_OK) return ret;
-    while (dir->mount) dir = dir->mount->root;   /* 跨進被掛載的 fs */
+    dir = vnode_follow_mount(dir);               /* 跨進被掛載的 fs */
     if (!dir->v_ops->readdir) return E_INVAL;
     return dir->v_ops->readdir(dir, index, name, size);
 }
@@ -128,7 +132,7 @@ int vfs_open(const char* pathname, int flags, struct file** target) {
         struct vnode* parent;
         char comp[VFS_MAX_COMPONENT];
         if (vfs_lookup_parent(pathname, &parent, comp) != E_OK) return E_NOENT;
-        while (parent->mount) parent = parent->mount->root;
+        parent = vnode_follow_mount(parent);
         struct vnode* newv;
         if (parent->v_ops->create(parent, &newv, comp) != E_OK) return E_INVAL;
         return newv->f_ops->open(newv, target);
@@ -145,7 +149,7 @@ int vfs_mkdir(const char* pathname) {
     struct vnode* parent;
     char comp[VFS_MAX_COMPONENT];
     if (vfs_lookup_parent(pathname, &parent, comp) != E_OK) return E_NOENT;
-    while (parent->mount) parent = parent->mount->root;
+    parent = vnode_follow_mount(parent);
     struct vnode* newv;
     return parent->v_ops->mkdir(parent, &newv, comp);
 }
@@ -171,7 +175,7 @@ int vfs_mknod(const char* path, int dev_id) {
     struct vnode* parent;
     char comp[VFS_MAX_COMPONENT];
     if (vfs_lookup_parent(path, &parent, comp) != E_OK) return E_NOENT;
-    while (parent->mount) parent = parent->mount->root;
+    parent = vnode_follow_mount(parent);
     struct vnode* v;
     if (parent->v_ops->create(parent, &v, comp) != E_OK) return E_INVAL;
     v->f_ops = dev_table[dev_id];

@@ -114,7 +114,7 @@ static long sys_mount(struct trap_frame *tf) {
 static long sys_chdir(struct trap_frame *tf) {
     struct vnode *v;
     if (vfs_lookup((const char *)tf->a0, &v) != E_OK) return -1;
-    while (v->mount) v = v->mount->root;
+    v = vnode_follow_mount(v);
     kthread_get_current()->cwd = v;
     return 0;
 }
