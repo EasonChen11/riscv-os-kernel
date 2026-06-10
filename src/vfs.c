@@ -164,16 +164,16 @@ int vfs_mkdir(const char* pathname) {
 }
 
 int vfs_mount(const char* target, const char* fsname) {
-    struct vnode* mp;
-    if (vfs_lookup(target, &mp) != E_OK) return E_NOENT;
+    struct vnode* mount_point;
+    if (vfs_lookup(target, &mount_point) != E_OK) return E_NOENT;
     struct filesystem* fs = find_filesystem(fsname);
     if (!fs) return E_INVAL;
 
     struct mount* mnt = dynalloc_alloc(sizeof(struct mount));
     if (fs->setup_mount(fs, mnt) != E_OK) return E_INVAL;
     /* 讓 mounted root 的 ".." 跨回父 fs：parent = mount point 的父目錄 */
-    mnt->root->parent = mp->parent;
-    mp->mount = mnt;
+    mnt->root->parent = mount_point->parent;
+    mount_point->mount = mnt;
     return E_OK;
 }
 
