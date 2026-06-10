@@ -32,6 +32,14 @@ char* strchr(const char* s, int c) {
     return (char*)0;
 }
 
+// 截斷複製：最多寫 size-1 個字元，並保證結尾補 '\0'（BSD strlcpy 語意）。
+void strlcpy(char* dst, const char* src, unsigned long size) {
+    if (!size) return;
+    unsigned long i = 0;
+    for (; src[i] && i < size - 1; i++) dst[i] = src[i];
+    dst[i] = '\0';
+}
+
 // freestanding 環境沒 libc memcpy；GCC 對 byte-loop 會 lower 成 memcpy call
 // （loop idiom recognition），所以這個 symbol 必須自己提供，不然 link 失敗。
 void* memcpy(void* dst, const void* src, unsigned long n) {
