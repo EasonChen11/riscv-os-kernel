@@ -9,7 +9,7 @@ struct mount* rootfs;
 /* ---- filesystem 註冊表 ---- */
 #define VFS_MAX_FS 8
 static struct filesystem* fs_table[VFS_MAX_FS];
-static int fs_count;
+static int fs_count = 0;
 
 int register_filesystem(struct filesystem* fs) {
     if (fs_count >= VFS_MAX_FS) return E_INVAL;
@@ -26,7 +26,7 @@ struct filesystem* find_filesystem(const char* name) {
 /* ---- 裝置註冊表 ---- */
 #define VFS_MAX_DEV 8
 static struct file_operations* dev_table[VFS_MAX_DEV];
-static int dev_count;
+static int dev_count = 0;
 
 int register_dev(struct file_operations* fops) {
     if (dev_count >= VFS_MAX_DEV) return E_INVAL;
