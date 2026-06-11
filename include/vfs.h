@@ -19,7 +19,7 @@
 #define E_EXIST   -2   /* create/mkdir 目標已存在 */
 #define E_NOTDIR  -3   /* 對非目錄做 lookup/mkdir */
 #define E_RDONLY  -4   /* 對唯讀 fs 寫 */
-#define E_INVAL   -5   /* 參數錯（壞 fd / 壞 path / 滿） */
+#define E_INVAL   -5   /* 參數錯（壞 fd / 壞 path / 滿）, call 不合法function */
 #define E_MAXFD   -6   /* fd table 滿 */
 
 struct vnode;
