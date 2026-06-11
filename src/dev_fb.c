@@ -15,6 +15,7 @@ static int fb_open(struct vnode* node, struct file** target) {
     f->f_pos = 0;
     f->f_ops = node->f_ops;
     f->flags = 0;
+    f->refcount = 1;
     *target = f;
     return E_OK;
 }

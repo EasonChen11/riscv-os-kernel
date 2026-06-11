@@ -83,14 +83,14 @@ long do_fork(struct trap_frame *parent_tf) {
         }
     }
 
-    /* 2.5 fd_table 深拷貝：每個開啟的 file handle 配新的一份（f_pos 獨立），
-     *     指向同一個 vnode。否則 child close 會 free 掉 parent 還在用的 handle。
+    /* 2.5 fd_table 淺拷貝 + refcount++（Linux 語意）：
+     *     parent/child 共用同一個 struct file，f_pos 共享。
+     *     close 時 refcount-- 降到 0 才真正 free（vfs_close 負責）。
      *     cwd 是 vnode 指標、vnode 長存，沿用淺拷貝即可。 */
     for (int i = 0; i < THREAD_MAX_FD; i++) {
         if (parent->fd_table[i]) {
-            struct file *nf = dynalloc_alloc(sizeof(struct file));
-            *nf = *parent->fd_table[i];
-            child->fd_table[i] = nf;
+            child->fd_table[i] = parent->fd_table[i];
+            parent->fd_table[i]->refcount++;
         }
     }
 

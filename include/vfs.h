@@ -57,6 +57,7 @@ struct file {
     uint64_t f_pos;                  /* 下一次 R/W 位置（special file 可不推進） */
     struct file_operations* f_ops;
     int flags;
+    int refcount;                    /* fork 後共用同一 handle：refcount>1；降到 0 才真正 free */
 };
 
 struct mount {

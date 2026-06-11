@@ -149,7 +149,10 @@ int vfs_open(const char* pathname, int flags, struct file** target) {
     return E_NOENT;
 }
 
-int vfs_close(struct file* file)                          { return file->f_ops->close(file); }
+int vfs_close(struct file* file) {
+    if (--file->refcount > 0) return E_OK;   /* 還有其他 fd 指著，不真正 free */
+    return file->f_ops->close(file);
+}
 long vfs_read(struct file* file, void* buf, uint64_t len)  { return file->f_ops->read(file, buf, len); }
 long vfs_write(struct file* file, const void* buf, uint64_t len){ return file->f_ops->write(file, buf, len); }
 

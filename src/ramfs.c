@@ -91,6 +91,7 @@ static int ramfs_open(struct vnode* file_node, struct file** target) {
     f->f_pos = 0;
     f->f_ops = file_node->f_ops;
     f->flags = 0;
+    f->refcount = 1;
     *target = f;
     return E_OK;
 }
