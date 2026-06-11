@@ -59,12 +59,12 @@ long do_fork(struct trap_frame *parent_tf) {
     child->kstack = buddy_alloc_pages(0);
     memcpy(child->kstack, parent->kstack, KSTACK_SIZE);
 
-    /* 2. lab6：deep-copy user pages via per-process PGD。
+    /* 2. deep-copy user pages via per-process PGD。
      *    parent / child user VA layout 完全一致，trap_frame.sp 不必修。
      *    kernel thread (pgd_pa=0) 不分配 user PGD，fork 後仍是 kernel thread。 */
     if (parent->pgd_pa) {
         child->pgd_pa = alloc_pgd();
-        /* Adv3：CoW share。parent / child 都改唯讀 + refcnt++，
+        /* CoW share。parent / child 都改唯讀 + refcnt++，
          * 第一次 store 才走 do_page_fault → 配新頁 + memcpy。 */
         vm_copy_user_cow(child->pgd_pa, parent->pgd_pa);
     } else {

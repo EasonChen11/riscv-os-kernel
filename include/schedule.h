@@ -17,7 +17,7 @@ void kill_zombies(void);
 void schedule(void);
 void idle(void);
 
-// 啟動 1/32 秒 preemption tick；BE3 之前都靠 cooperative schedule，呼叫這個之後
+// 啟動 1/32 秒 preemption tick；呼叫這個之後
 // 變 preemptive RR。應在 kthread_bootstrap_idle 之後、idle() 之前呼叫。
 void start_preempt(void);
 

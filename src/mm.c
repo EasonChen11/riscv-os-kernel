@@ -147,7 +147,7 @@ long do_mmap(struct thread *me, void *addr, unsigned long length, int prot, int 
 }
 
 
-/* Adv2: 查 va 落在哪個 vma；找不到回 NULL */
+/* 查 va 落在哪個 vma；找不到回 NULL */
 static struct vma *vma_lookup(struct thread *me, unsigned long va) {
     struct list_head *node = me->vma_list.next;
     while (node != &me->vma_list) {
@@ -205,7 +205,7 @@ void do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad
     unsigned long va_aligned = bad_va & ~(PAGE_SIZE - 1);
     unsigned long cur_pte = vm_lookup_pte(me->pgd_pa, bad_va);
 
-    /* (1) PTE 存在 + store fault + PTE 沒 W → CoW (Adv3) 或寫只讀 vma */
+    /* (1) PTE 存在 + store fault + PTE 沒 W → CoW 或寫只讀 vma */
     if ((cur_pte & PTE_V) && needs_w && !(cur_pte & PTE_W)) {
         if (!(vma->pte_prot & PTE_W)) {
             uart_puts("[Segmentation fault]: Kill Process\n");

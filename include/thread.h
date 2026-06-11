@@ -33,7 +33,7 @@ struct thread {
     int                 pid;
     int                 ppid;
     void               *kstack;      // kernel stack
-    // lab6 起 user stack 透過 pgd_pa 頁表管理，不需要 ustack 指標
+    // user stack 透過 pgd_pa 頁表管理，不需要 ustack 指標
     int                 wait_pid;    // waitpid 等待的 child pid
     bool                is_kernel;   // 擋 user stop/kill idle/shell
     struct list_head    rq_link;     // run queue / zombie list 共用

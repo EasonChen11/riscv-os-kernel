@@ -28,7 +28,7 @@ void startup_init(unsigned long heap_size) {
     // 從最小的 end 開始掃：kernel 被 relocate 到 RAM 頂端，若取 max 會使搜尋起點過高；
     // 取 min 後由 memory_find_free 跳過 kernel / fdt / initrd / /reserved-memory 等已登記區段，
     // 找出中段的可用空洞。結果再 clamp 到 g_mem_base 以上避免落在 RAM 之外
-    /* lab6: 全部以 PA 算範圍（mem_reserve 是 PA-domain），最後 heap 暴露 VA */
+    /* 全部以 PA 算範圍（mem_reserve 是 PA-domain），最後 heap 暴露 VA */
     unsigned long lower_pa = virt_to_phys(g_kernel_end);
     unsigned long fdt_end_pa = virt_to_phys((unsigned long)g_fdt_base) + g_fdt_size;
     unsigned long initrd_end_pa = virt_to_phys(g_initrd_end);

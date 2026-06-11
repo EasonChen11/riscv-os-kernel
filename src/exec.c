@@ -26,7 +26,7 @@ static void setup_std_fds(struct thread *me) {
     }
 }
 
-/* lab6 rst：user image @ VA 0x0、user stack top @ 0x4000000000
+/* user image @ VA 0x0、user stack top @ 0x4000000000
  * exec 只配/註冊 top 1 page；sp 往下踩出去由 do_page_fault 的 expand-stack 動態擴 vma */
 #define USER_STACK_TOP      0x4000000000UL
 #define USER_STACK_TOP_PAGE (USER_STACK_TOP - PAGE_SIZE)
@@ -77,7 +77,7 @@ void exec_umode(const char *path) {
     }
     struct thread *me = kthread_get_current();
 
-    setup_std_fds(me);   /* Adv1：fd 0/1/2 → /dev/uart */
+    setup_std_fds(me);   /* fd 0/1/2 → /dev/uart */
 
     /* 先存舊 PGD 等切換完再 free；否則舊 PGD 那一頁回到 buddy 後
      * 可能被 alloc_pgd / load_user_image 拿去當新 frame 寫壞，但 satp 仍指它，TLB miss 就爛 */

@@ -55,7 +55,7 @@ void memory_reserve_fdt_reserved_mem(const void* fdt) {
 
 // 呼叫者必須確保 buddy_register_range 已設好 g_buddy_base_addr
 int memory_is_reserved(unsigned long page_idx) {
-    /* regions[] 全是 PA；不能用 buddy_page_idx_to_addr（lab6 起回傳 VA） */
+    /* regions[] 全是 PA；不能用 buddy_page_idx_to_addr（回傳 VA） */
     unsigned long addr = g_buddy_base_addr + page_idx * PAGE_SIZE;
     for (int i = 0; i < region_count; i++) {
         if (addr >= regions[i].start && addr < regions[i].end) { // 如果 addr 落在任何一個 reserved 區間內

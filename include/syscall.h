@@ -26,8 +26,8 @@ enum {
     SYS_MKDIR      = 18,
     SYS_MOUNT      = 19,
     SYS_CHDIR      = 20,
-    SYS_LSEEK64    = 21,   // Adv2
-    SYS_IOCTL      = 22,   // Adv2
+    SYS_LSEEK64    = 21,
+    SYS_IOCTL      = 22,
     NR_SYSCALL,
 };
 

@@ -232,7 +232,7 @@ char uart_getc(void) {
         // 這裡顯式 csrsi 把 SIE 開回來，讓 IRQ 可以填 ring；trap exit 用
         // trap_frame 內存的舊 sstatus 還原，臨時開的 SIE 不會洩漏到 user。
         asm volatile("csrsi sstatus, 2");
-        // 沒 input 就讓出 CPU 給其他 thread；BE3 timer-driven preemption 下，
+        // 沒 input 就讓出 CPU 給其他 thread；timer-driven preemption 下，
         // tight spin 會跟切換 race（observed: 加 shell 進 run queue 後系統卡死）。
         // schedule() 內 boot 早期 tp 為 NULL 會早退，bootloader 階段呼叫安全。
         extern void schedule(void);

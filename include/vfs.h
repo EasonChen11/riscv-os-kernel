@@ -82,7 +82,7 @@ extern struct mount* rootfs;
 int register_filesystem(struct filesystem* fs);
 struct filesystem* find_filesystem(const char* name);
 
-/* 裝置註冊（Adv1 起）：driver 註冊 file_operations 拿到 dev id；
+/* 裝置註冊：driver 註冊 file_operations 拿到 dev id；
  * vfs_mknod 在 fs 建一個 special file，把 f_ops 覆寫成 driver 的。 */
 int register_dev(struct file_operations* fops);
 int vfs_mknod(const char* path, int dev_id);
@@ -106,11 +106,11 @@ int vfs_close(struct file* file);
 long vfs_read(struct file* file, void* buf, uint64_t len);
 long vfs_write(struct file* file, const void* buf, uint64_t len);
 
-/* 目錄 / 掛載（BE2 起） */
+/* 目錄 / 掛載 */
 int vfs_mkdir(const char* pathname);
 int vfs_mount(const char* target, const char* fsname);
 
-/* file descriptor table helper（BE3 起） */
+/* file descriptor table helper */
 struct thread;
 int fd_alloc(struct thread* t, struct file* f);   /* 回最小空槽 index，滿則 E_MAXFD */
 struct file* fd_get(struct thread* t, int fd);    /* 壞 fd / 未開 回 NULL */

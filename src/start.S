@@ -1,7 +1,7 @@
 /*
  * Note: labels here omit the `.L` prefix so they remain visible in the symbol table for objdump/nm.
  *
- * Lab6 boot path (QEMU virt, OpenSBI hand-off at S-mode, PC = PA 0x80200000):
+* boot path (QEMU virt, OpenSBI hand-off at S-mode, PC = PA 0x80200000):
  *   1. clear BSS via low-PA  (objcopy -O binary 不含 NOBITS sections，
  *                              BSS 必須在 setup_vm 用 pgd[]/pmd_*[] 前歸零)
  *   2. call setup_vm         (建 identity + higher-half map、寫 satp)

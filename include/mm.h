@@ -38,7 +38,7 @@ struct vma *vma_alloc(struct thread *me, unsigned long length, unsigned long pte
 
 long  do_mmap(struct thread *me, void *addr, unsigned long length, int prot, int flags);
 
-/* Adv2: trap.c 的 cause 12/13/15 都 dispatch 來這裡。
+/* trap.c 的 cause 12/13/15 都 dispatch 來這裡。
  * 在 vma 內 → demand paging 補上 page；不在 → segfault 殺 process。 */
 void  do_page_fault(struct trap_frame *tf, unsigned long cause, unsigned long bad_va);
 

@@ -11,7 +11,7 @@
  *   pmd_kern[i]  - PMD for the i-th GiB of [ram_pa, ram_pa+4 GiB), shared by
  *                  the identity map and the higher-half linear map
  *
- * MMIO 不在這裡處理，由 mmio_finalize() 後續用 4 KiB PTE 接手（lab6.rst:
+ * MMIO 不在這裡處理，由 mmio_finalize() 後續用 4 KiB PTE 接手（
  * Finer Granularity Paging）。
  */
 #define LINEAR_MAP_GIB 2
@@ -128,7 +128,7 @@ static void free_table(unsigned long table_pa, int level)
             unsigned long pte = t[i];
             if (!(pte & PTE_V)) continue;
             if (pte & (PTE_R | PTE_W | PTE_X)) {
-                /* leaf at intermediate level (huge page) — lab6 user 不會這樣，略過 */
+                /* leaf at intermediate level (huge page) — user 不會這樣，略過 */
                 continue;
             }
             free_table(PTE_TO_PA(pte), level - 1);
@@ -181,7 +181,7 @@ void map_pages(unsigned long pgd_pa, unsigned long va,
 }
 
 /* 走 src 的 user 半邊，逐 leaf PTE 配新 frame + memcpy + map 到 dst。
- * lab6 BE2 deep copy；Adv3 改 CoW。 */
+ * 逐 leaf PTE 配新 frame 後 deep copy。 */
 static void copy_user_pte(unsigned long dst_pgd_pa, unsigned long va, unsigned long pte_val)
 {
     unsigned long src_pa = PTE_TO_PA(pte_val);
@@ -197,7 +197,7 @@ static void walk_src_pmd(unsigned long dst_pgd_pa, unsigned long base_va, unsign
     for (int i = 0; i < ENTRIES_PER_TABLE; i++) {
         unsigned long pmd_ent = pmd[i];
         if (!(pmd_ent & PTE_V)) continue;
-        if (pmd_ent & (PTE_R | PTE_W | PTE_X)) continue; /* huge page; lab6 user 不會 */
+        if (pmd_ent & (PTE_R | PTE_W | PTE_X)) continue; /* huge page; user 不會 */
         unsigned long *pte = (unsigned long *)phys_to_virt(PTE_TO_PA(pmd_ent));
         for (int j = 0; j < ENTRIES_PER_TABLE; j++) {
             unsigned long pte_val = pte[j];
@@ -219,7 +219,7 @@ void vm_copy_user(unsigned long dst_pgd_pa, unsigned long src_pgd_pa)
     }
 }
 
-/* ───────────────────────── Adv3 CoW helpers ───────────────────────── */
+/* ─────────────────────────── CoW helpers ─────────────────────────── */
 
 /* 在 dst PGD 走相同 VA 路徑，需要時配 PMD/PTE 中介頁；不寫 leaf，回 leaf PTE 槽位址 */
 static unsigned long *get_or_alloc_pte_slot(unsigned long pgd_pa, unsigned long va)

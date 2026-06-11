@@ -4,7 +4,7 @@
 #include "trap.h"
 
 // 第一次跳 U-mode：kernel thread 直接走 inline asm sscratch+sret 路徑，
-// 一去不回（自身變成 user process）。lab4 既有用法，shell 仍可呼叫。
+// 一去不回（自身變成 user process）。shell 可呼叫。
 void exec_umode(const char *path);
 
 // shell 用：開新 thread 跑 exec_umode(path)，當前 thread 為其 parent。

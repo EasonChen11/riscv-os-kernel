@@ -19,7 +19,7 @@ struct page_descriptor {
 static struct chunk_pool pools[DA_NUM_POOLS];
 static struct page_descriptor *page_descriptors; // 每個 page 的描述資訊
 /* pool_sizes 全部選 PAGE_SIZE (4096) 的因數，避免 fill loop 放出跨頁 chunk。
- * 48 / 96 移除：lab6 起 struct vma 等 48-byte 物件改走 64-byte pool。 */
+ * 48 / 96 移除：struct vma 等 48-byte 物件改走 64-byte pool。 */
 static const unsigned int pool_sizes[DA_NUM_POOLS] = {16, 32, 64, 128, 256, 512, 1024, 2048};
 
 // N. Allocating a chunk:
@@ -66,7 +66,7 @@ void dynalloc_init(void) {
     }
 }
 
-// dynalloc 在 lab5 加 preempt 後變成 SMP-style shared resource：
+// dynalloc 在加 preempt 後變成 SMP-style shared resource：
 //   - kthread_create / do_fork 從 thread context (SIE=1) 呼叫 dynalloc_alloc
 //   - kill_zombies / drain_tasks / sleep_wake 也呼叫 dynalloc_alloc/free
 // 任何 list_add / list_del / in_use RMW 中間都可能被 preempt timer 中斷，

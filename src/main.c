@@ -50,7 +50,7 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     // Phase 1: 登記所有 reserved 區段。memory_reserve 只把區間 push 到靜態陣列，不依賴任何 allocator
     // OpenSBI 的區段不能硬編碼，若板子 /reserved-memory 有列就由 memory_reserve_fdt_reserved_mem 處理；
     // 否則 startup heap 會透過 lower-bound 避開（見 startup_auto_init），但 buddy 仍可能管到那段 RAM
-    /* mem_reserve / buddy 全是 PA-domain；kernel/fdt/initrd 在 lab6 都存 VA，需先轉 PA */
+    /* mem_reserve / buddy 全是 PA-domain；kernel/fdt/initrd 都存 VA，需先轉 PA */
     memory_reserve(virt_to_phys(g_kernel_start), g_kernel_end - g_kernel_start);          // kernel image
     memory_reserve(virt_to_phys((unsigned long)g_fdt_base), g_fdt_size);                  // dtb blob
     memory_reserve(virt_to_phys((unsigned long)g_initrd_base),
@@ -72,7 +72,7 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     buddy_init();
     dynalloc_init();
 
-    /* Phase 5: MMIO 4 KiB PTE 上線（lab6.rst Finer Granularity Paging）。
+    /* Phase 5: MMIO 4 KiB PTE 上線（Finer Granularity Paging）。
      * 必須 buddy_init 之後（map_pages 需要 buddy 配 PMD/PTE table），
      * plic_enable 之前（PLIC 第一次 MMIO 寫），不需要 irq_save 因為 IRQ source 還沒 enable。 */
     mmio_finalize(uart_pa, uart_size, plic_pa, plic_size);

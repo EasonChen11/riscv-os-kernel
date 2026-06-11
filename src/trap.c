@@ -43,7 +43,7 @@ void do_trap(struct trap_frame *tf) {
             tf->sepc += 4;
             do_syscall(tf);
         } else if (cause_code == 12 || cause_code == 13 || cause_code == 15) {
-            /* Adv2: 12=inst fetch fault, 13=load fault, 15=store fault */
+            /* 12=inst fetch fault, 13=load fault, 15=store fault */
             do_page_fault(tf, cause_code, tf->stval);
         } else {
             struct thread *cur = kthread_get_current();
@@ -67,7 +67,7 @@ void do_trap(struct trap_frame *tf) {
     // 與 nested interrupt。trap.S 已存 sstatus/sepc，nested 下兩份 frame 不互相覆寫。
     drain_tasks();
 
-    // BE3 timer-driven preemption：preempt_tick_cb 在 drain_tasks 內標旗，
+    // timer-driven preemption：preempt_tick_cb 在 drain_tasks 內標旗，
     // 在這裡（trap 即將出去前）才呼叫 schedule。時機選這裡的理由是 stack 整潔
     // ──drain_tasks 已收尾、sp 在 trap_frame 底部，schedule 切過去再切回來 sp 仍正確。
     if (need_resched) {
