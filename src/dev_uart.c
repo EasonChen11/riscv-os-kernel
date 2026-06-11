@@ -33,13 +33,16 @@ static long uart_dev_write(struct file* f, const void* buf, uint64_t len) {
     return (long)len;
 }
 
+static long uart_dev_lseek64(struct file* f, long off, int w) { return E_INVAL; }
+static int  uart_dev_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
+
 static struct file_operations uart_dev_fops = {
-    .open  = uart_dev_open,
-    .close = uart_dev_close,
-    .read  = uart_dev_read,
-    .write = uart_dev_write,
-    .lseek64 = (void*)0,
-    .ioctl   = (void*)0,
+    .open    = uart_dev_open,
+    .close   = uart_dev_close,
+    .read    = uart_dev_read,
+    .write   = uart_dev_write,
+    .lseek64 = uart_dev_lseek64,
+    .ioctl   = uart_dev_ioctl,
 };
 
 int uart_dev_init(void) {

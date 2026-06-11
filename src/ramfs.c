@@ -115,13 +115,16 @@ static struct vnode_operations ramfs_v_ops = {
     .readdir = ramfs_readdir,
 };
 
+static long ramfs_lseek64(struct file* f, long off, int w) { return E_INVAL; }
+static int  ramfs_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
+
 static struct file_operations ramfs_f_ops = {
-    .open  = ramfs_open,
-    .close = ramfs_close,
-    .read  = ramfs_read,
-    .write = ramfs_write,
-    .lseek64 = (void*)0,
-    .ioctl   = (void*)0,
+    .open    = ramfs_open,
+    .close   = ramfs_close,
+    .read    = ramfs_read,
+    .write   = ramfs_write,
+    .lseek64 = ramfs_lseek64,
+    .ioctl   = ramfs_ioctl,
 };
 
 struct filesystem ramfs = {

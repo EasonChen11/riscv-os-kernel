@@ -146,13 +146,16 @@ static struct vnode_operations tmpfs_v_ops = {
     .readdir = tmpfs_readdir,
 };
 
+static long tmpfs_lseek64(struct file* f, long off, int w) { return E_INVAL; }
+static int  tmpfs_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
+
 static struct file_operations tmpfs_f_ops = {
-    .open  = tmpfs_open,
-    .close = tmpfs_close,
-    .read  = tmpfs_read,
-    .write = tmpfs_write,
-    .lseek64 = (void*)0,
-    .ioctl   = (void*)0,
+    .open    = tmpfs_open,
+    .close   = tmpfs_close,
+    .read    = tmpfs_read,
+    .write   = tmpfs_write,
+    .lseek64 = tmpfs_lseek64,
+    .ioctl   = tmpfs_ioctl,
 };
 
 struct filesystem tmpfs = {

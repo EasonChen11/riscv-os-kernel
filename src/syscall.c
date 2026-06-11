@@ -161,7 +161,7 @@ static long sys_chdir(struct trap_frame *tf) {
 static long sys_lseek64(struct trap_frame *tf) {
     struct file *f = fd_get(kthread_get_current(), (int)tf->a0);
     // a0=fd  a1=offset  a2=whence
-    if (!f || !f->f_ops->lseek64) return -1;
+    if (!f) return -1;
     return f->f_ops->lseek64(f, (long)tf->a1, (int)tf->a2);
 }
 
@@ -169,7 +169,7 @@ static long sys_lseek64(struct trap_frame *tf) {
 static long sys_ioctl(struct trap_frame *tf) {
     struct file *f = fd_get(kthread_get_current(), (int)tf->a0);
     // a0=fd  a1=request  a2=arg
-    if (!f || !f->f_ops->ioctl) return -1;
+    if (!f) return -1;
     return f->f_ops->ioctl(f, (unsigned long)tf->a1, (void *)tf->a2);
 }
 
