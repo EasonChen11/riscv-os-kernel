@@ -32,8 +32,8 @@ struct file_operations {
     int  (*close)(struct file* file);
     long (*read) (struct file* file, void* buf, uint64_t len);
     long (*write)(struct file* file, const void* buf, uint64_t len);
-    long (*lseek64)(struct file* file, long offset, int whence);     /* Adv2 */
-    int  (*ioctl)(struct file* file, unsigned long request, void* arg); /* Adv2 */
+    long (*lseek64)(struct file* file, long offset, int whence);     /* /dev/fb */
+    int  (*ioctl)(struct file* file, unsigned long request, void* arg); /* /dev/fb */
 };
 
 struct vnode_operations {
