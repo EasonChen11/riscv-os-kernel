@@ -139,15 +139,15 @@ static long tmpfs_write(struct file* file, const void* buf, uint64_t len) {
     return (long)k;
 }
 
+static long tmpfs_lseek64(struct file* f, long off, int w) { return E_INVAL; }
+static int  tmpfs_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
+
 static struct vnode_operations tmpfs_v_ops = {
     .lookup  = tmpfs_lookup,
     .create  = tmpfs_create,
     .mkdir   = tmpfs_mkdir,
     .readdir = tmpfs_readdir,
 };
-
-static long tmpfs_lseek64(struct file* f, long off, int w) { return E_INVAL; }
-static int  tmpfs_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
 
 static struct file_operations tmpfs_f_ops = {
     .open    = tmpfs_open,

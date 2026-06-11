@@ -108,15 +108,15 @@ static long ramfs_read(struct file* file, void* buf, uint64_t len) {
 }
 static long ramfs_write(struct file* f, const void* b, uint64_t n) { return E_RDONLY; }
 
+static long ramfs_lseek64(struct file* f, long off, int w) { return E_INVAL; }
+static int  ramfs_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
+
 static struct vnode_operations ramfs_v_ops = {
     .lookup  = ramfs_lookup,
     .create  = ramfs_create,
     .mkdir   = ramfs_mkdir,
     .readdir = ramfs_readdir,
 };
-
-static long ramfs_lseek64(struct file* f, long off, int w) { return E_INVAL; }
-static int  ramfs_ioctl  (struct file* f, unsigned long r, void* a) { return E_INVAL; }
 
 static struct file_operations ramfs_f_ops = {
     .open    = ramfs_open,
