@@ -3,12 +3,12 @@
 
 #include <stdint.h>
 
-/* 開檔旗標 / lseek / ioctl 請求碼（規格固定值） */
+/* 開檔旗標 / lseek / ioctl 請求碼（固定值） */
 #define O_CREAT 00000100
 #define SEEK_SET 0
 #define FB_IOCTL_GET_INFO 0
 
-/* 規格上限 */
+/* 上限 */
 #define VFS_MAX_PATH      255   /* pathname 最長 */
 #define VFS_MAX_COMPONENT 16    /* component name <=15 + '\0' */
 #define VFS_MAX_FD        16    /* 每 process 開檔數，fd < 16 */

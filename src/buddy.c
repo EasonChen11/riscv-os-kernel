@@ -259,7 +259,7 @@ void buddy_free_pages(void *addr) {
     // log_free(block_addr, order, index); // Log the freeing of the page
 
     freelist_add(idx_to_frame(index), order);
-    // dump_counts();  // 同上：heartbeat 觸發的 task slot free 會撞到，留給 mmtest 手動呼叫用
+    // dump_counts();  // 同上：heartbeat 觸發的 task slot free 會撞到，留給手動除錯時呼叫
 }
 /* CoW：多一個 PGD 引用這頁 → refcnt++ */
 void frame_get(void *va) {

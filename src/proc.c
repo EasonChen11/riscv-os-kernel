@@ -51,7 +51,7 @@ long do_fork(struct trap_frame *parent_tf) {
     init_list_head(&child->child_link);
     init_list_head(&child->children);
 
-    // signal_handlers[] 故意繼承（lab spec）；per-delivery state 清掉避免 double-free
+    // signal_handlers[] 故意繼承（比照 POSIX fork 語意）；per-delivery state 清掉避免 double-free
     child->signal_pending  = 0;
     child->signal_handling = false;
 

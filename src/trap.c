@@ -17,7 +17,7 @@ void trap_init(void) {
 }
 
 /* Called from handle_exception (assembly) with the saved trap frame. */
-// file :file:///Users/eason/Downloads/riscv-spec.html#scause
+// 參考：RISC-V privileged spec, scause register
 void do_trap(struct trap_frame *tf) {
     // scause bit 63 = interrupt/exception 區分；低 63 位 = cause code
     long cause_code = tf->scause & SCAUSE_CODE_MASK;

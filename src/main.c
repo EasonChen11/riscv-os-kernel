@@ -72,7 +72,7 @@ void start_kernel(unsigned long hart_id, const void* fdt, unsigned long reloc_ad
     buddy_init();
     dynalloc_init();
 
-    /* Phase 5: MMIO 4 KiB PTE 上線（Finer Granularity Paging）。
+    /* Phase 5: MMIO 4 KiB PTE 上線。
      * 必須 buddy_init 之後（map_pages 需要 buddy 配 PMD/PTE table），
      * plic_enable 之前（PLIC 第一次 MMIO 寫），不需要 irq_save 因為 IRQ source 還沒 enable。 */
     mmio_finalize(uart_pa, uart_size, plic_pa, plic_size);
