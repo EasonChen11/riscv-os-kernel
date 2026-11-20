@@ -4,7 +4,7 @@ A small RISC-V 64-bit kernel in C and assembly that runs on the OrangePi RV2 (Sp
 
 ## Features
 
-The C and assembly sources under `src/` total about 4,600 lines. Every item below was checked against the source file named in parentheses.
+The C and assembly sources under `src/` total about 4,600 lines. Each item names the files that implement it.
 
 - Boot with a flattened device tree: the kernel parses the DTB for the UART, PLIC, memory size, initrd and `/reserved-memory` (`src/fdt.c`, `src/bootinfo.c`, `src/mem_reserve.c`).
 - Sv39 virtual memory: the kernel runs in the upper half at `0xffffffc000000000` and uses a linear map of RAM. MMIO regions are mapped with 4 KiB pages after the DTB is parsed (`src/vm.c`, `include/pgtable.h`).
@@ -26,7 +26,7 @@ The repository does not ship any user programs. `exec` needs a flat binary that 
 
 OpenSBI runs in M-mode and jumps to the next stage in S-mode with the hart id in `a0` and the DTB address in `a1`. The next stage is either the kernel directly (QEMU `-kernel`, or the FIT image on the board) or the bootloader.
 
-The bootloader in `bootloader/` is a small program for fast development on the board. It does the following:
+The bootloader in `bootloader/` loads a new kernel over the serial port, so you don't have to rewrite the SD card after every build. It:
 
 1. Parses the DTB and picks a 2 MiB aligned address near the top of RAM that does not overlap the DTB, the initrd or `/reserved-memory` (`bootloader/src/bootloader.c`).
 2. Copies itself to that address and continues from there, so that the load address of the kernel stays free (`bootloader/src/start.S`).
@@ -35,7 +35,7 @@ The bootloader in `bootloader/` is a small program for fast development on the b
 
 `tools/send.py` sends the header and the kernel image over the serial port.
 
-The kernel entry point is `src/start.S`. It clears `.bss`, builds the Sv39 page tables, jumps to the upper-half addresses, removes the identity map, installs the trap vector and calls `start_kernel` in `src/main.c`. That function initializes the subsystems in the order listed in its comments and finally starts the shell thread.
+The kernel entry point is `src/start.S`. It clears `.bss`, builds the Sv39 page tables, jumps to the upper-half addresses, removes the identity map, installs the trap vector and calls `start_kernel` in `src/main.c`. `start_kernel` initializes each subsystem and then starts the shell thread.
 
 ## Build and run
 
@@ -45,7 +45,7 @@ Toolchain:
 sudo apt install gcc-riscv64-unknown-elf qemu-system-misc u-boot-tools
 ```
 
-The `initramfs.cpio` target also uses `cpio`, which is installed on most systems. Tested with Ubuntu 24.04 / GCC 13.2.0.
+Building `initramfs.cpio` also needs `cpio`. Tested with Ubuntu 24.04 and GCC 13.2.0.
 
 QEMU:
 
@@ -72,7 +72,7 @@ python3 tools/send.py /dev/ttyUSB0 kernel            # after the bootloader is w
 
 Copy `bootloader/bootloader.fit` to the SD card in the same way as `kernel.fit`. For QEMU, `make -C bootloader run` starts the bootloader on a pseudo-terminal and prints the `/dev/pts/N` device to pass to `tools/send.py`. Build the kernel with `make qemu` first so that `kernel` is the QEMU variant.
 
-Changing the contents of `rootfs/` is enough to change what `ls` and `cat` show in the shell. File names must be at most 15 characters and the directory must be flat.
+`ls` and `cat` in the shell show whatever is in `rootfs/`. Keep the directory flat and file names at 15 characters or fewer.
 
 ## Repository layout
 
