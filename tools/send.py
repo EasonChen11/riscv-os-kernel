@@ -4,8 +4,8 @@ import time
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python3 send_kernel_tty.py <device_path> <kernel_file>")
-        print("Example: python3 send_kernel_tty.py /dev/pts/1 kernel.bin")
+        print("Usage: python3 send.py <device_path> <kernel_file>")
+        print("Example: python3 send.py /dev/pts/1 kernel.bin")
         sys.exit(1)
 
     device = sys.argv[1]
