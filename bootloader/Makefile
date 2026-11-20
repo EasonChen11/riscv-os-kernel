@@ -19,20 +19,20 @@ OBJ_FILES  = $(C_FILES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%_c.o)
 OBJ_FILES += $(ASM_FILES:$(SRC_DIR)/%.S=$(BUILD_DIR)/%_s.o)
 
 # 預設目標：板子版（link_board.ld + 內嵌 cpio 的 bootloader_board.its）
-# QEMU 版透過 `make run` 走 override；參考 lab6 的 Makefile 結構
+# QEMU 版透過 `make run` 走 override
 LDSCRIPT ?= link_board.ld
 ITSFILE  ?= bootloader_board.its
 
-# DIR：要包入 cpio 的 lab 資料夾，預設 ../lab6
+# DIR：kernel 所在資料夾（本 repo 根目錄），預設 ..
 # KERNEL / INITRD 從 DIR 衍生，也可單獨 override
-DIR    ?= ../lab6
+DIR    ?= ..
 KERNEL ?= $(DIR)/kernel
 INITRD ?= $(DIR)/initramfs.cpio
 PTS    ?= /dev/ttyUSB0
 qemu_PTS ?= /dev/pts/4
 
 # build (預設) = 板子版：產生 bootloader_board.its（從 .in template）後 mkimage
-build: clean bootloader_board.its $(TARGET).fit
+build: clean initrd bootloader_board.its $(TARGET).fit
 
 $(TARGET).elf: $(OBJ_FILES)
 	@mkdir -p $(BUILD_DIR)
@@ -58,17 +58,17 @@ bootloader_board.its: bootloader_board.its.in
 # QEMU 啟動時會印 "char device redirected to /dev/pts/N"，
 # 接著另開 terminal：
 #   make watch PTS=/dev/pts/N             # screen 看 UART 輸出
-#   make load  PTS=/dev/pts/N DIR=../lab6 # sudo 跑 send.py
-# 切 lab：DIR=../labN（kernel / cpio 兩者都從 $(DIR) 取）
+#   make load  PTS=/dev/pts/N             # sudo 跑 send.py
+# kernel / cpio 兩者都從 $(DIR) 取
 # 退出 QEMU：另開 terminal `pkill -f qemu-system-riscv64`
 run: LDSCRIPT = link.ld
 run: ITSFILE  = bootloader_qemu.its
 run: CFLAGS  += -DQEMU
-run: clean $(TARGET).fit
+run: clean initrd $(TARGET).fit
 	@echo "──────────────────────────────────────────────────────"
 	@echo "  QEMU starting in pty mode. Look for /dev/pts/N below."
 	@echo "  Watch UART:  make watch PTS=/dev/pts/N"
-	@echo "  Upload:      make load  PTS=/dev/pts/N DIR=../lab6"
+	@echo "  Upload:      make load  PTS=/dev/pts/N"
 	@echo "──────────────────────────────────────────────────────"
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd $(INITRD) -display none -serial pty
 
@@ -76,7 +76,7 @@ run: clean $(TARGET).fit
 run_stdio: LDSCRIPT = link.ld
 run_stdio: ITSFILE  = bootloader_qemu.its
 run_stdio: CFLAGS  += -DQEMU
-run_stdio: clean $(TARGET).fit
+run_stdio: clean initrd $(TARGET).fit
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd $(INITRD) -nographic
 	# 退出 QEMU：Ctrl-A X
 
@@ -86,31 +86,15 @@ watch:
 
 
 
-# CPIO_ROOT：解包後的暫存目錄，預設放在 INITRD 旁邊
-CPIO_ROOT ?= $(DIR)/cpio_root
-
-cpio:
-	cpio -o -H newc < $(DIR)/cpio_files > $(INITRD)
-
-# 將 INITRD 解包到 CPIO_ROOT，方便手動放入新檔案
-cpio-unpack:
-	mkdir -p $(CPIO_ROOT)
-	cd $(CPIO_ROOT) && cpio -idm --no-absolute-filenames < $(INITRD)
-
-# 將 CPIO_ROOT 重新打包回 INITRD，完成後自動清除暫存目錄
-cpio-pack:
-	cd $(CPIO_ROOT) && find . | cpio -o -H newc > $(INITRD)
-	$(MAKE) cpio-clean
-
-# 清除暫存目錄
-cpio-clean:
-	rm -rf $(CPIO_ROOT)
+# initramfs.cpio 由 repo 根目錄的 Makefile 從 rootfs/ 產生
+initrd:
+	$(MAKE) -C $(DIR) initramfs.cpio
 
 load:
-	sudo python3 send.py $(PTS) $(KERNEL)
+	sudo python3 ../tools/send.py $(PTS) $(KERNEL)
 
 qemu_load:
-	sudo python3 send.py $(qemu_PTS) $(KERNEL)
+	sudo python3 ../tools/send.py $(qemu_PTS) $(KERNEL)
 
 clean:
 	rm -f $(TARGET) $(TARGET).fit bootloader_board.its
@@ -130,18 +114,13 @@ help:
 	@echo "  qemu_load      透過 send.py 上傳 kernel 到 QEMU pty"
 	@echo "  watch          用 screen 監看 UART 輸出（退出：Ctrl-A k）"
 	@echo ""
-	@echo "CPIO targets:"
-	@echo "  cpio           從 \$$(DIR)/cpio_files 清單打包 initramfs.cpio"
-	@echo "  cpio-unpack    解包 initramfs.cpio 到 \$$(CPIO_ROOT)"
-	@echo "  cpio-pack      從 \$$(CPIO_ROOT) 重新打包，完成後自動 cpio-clean"
-	@echo "  cpio-clean     刪除 \$$(CPIO_ROOT) 暫存目錄"
+	@echo "  initrd         在 \$$(DIR) 以 rootfs/ 建出 initramfs.cpio"
 	@echo ""
 	@echo "Parameters (current values):"
 	@echo "  DIR       = $(DIR)"
 	@echo "  KERNEL    = $(KERNEL)"
 	@echo "  INITRD    = $(INITRD)"
-	@echo "  CPIO_ROOT = $(CPIO_ROOT)"
 	@echo "  PTS       = $(PTS)"
 	@echo "  qemu_PTS  = $(qemu_PTS)"
 
-.PHONY: build clean run run_stdio watch load cpio cpio-unpack cpio-pack cpio-clean help
+.PHONY: build clean run run_stdio watch load qemu_load initrd help
