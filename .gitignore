@@ -1,18 +1,13 @@
+# build outputs
 kernel
-kernel.elf
-kernel.bin
-kernel.fit
-screenlog.0
+*.elf
+*.bin
+*.fit
 *.o
 build/
-user/build/
-osctest.bin
-osctest.elf
-vfs.bin
-note.md
-flow.md
-NOTES.md
-tutorial.md
-plan.md
-kernel.its.note
-qemu.dtb
+initramfs.cpio
+screenlog.0
+
+# local tooling
+CLAUDE.md
+.claude/
