@@ -34,7 +34,7 @@
     configurations {
         default = "config-1";
         config-1 {
-            description = "NYCU OSC RISC-V KERNEL";
+            description = "RISC-V kernel";
             kernel = "kernel";
             fdt = "fdt";
             ramdisk = "ramdisk";

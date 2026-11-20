@@ -1,6 +1,6 @@
 /dts-v1/;
 / {
-    description = "OSC-2026 Bootloader FIT Image";
+    description = "Bootloader FIT image (QEMU)";
     #address-cells = <2>;
     images {
         kernel {
@@ -17,7 +17,7 @@
     configurations {
         default = "config-1";
         config-1 {
-            description = "OSC Bootloader";
+            description = "Bootloader";
             kernel = "kernel";
         };
     };
