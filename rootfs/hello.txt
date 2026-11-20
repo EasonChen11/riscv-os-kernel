@@ -1,0 +1,2 @@
+Hello from the initramfs.
+This file is read through the /ramfs mount: try "cat hello.txt".

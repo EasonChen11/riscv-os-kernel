@@ -37,7 +37,7 @@ OBJ_FILES += $(ASM_FILES:$(SRC_DIR)/%.S=$(BUILD_DIR)/%_s.o)
 # Main Build Target
 build: clean $(TARGET).fit
 
-# Linker Script (default: board, overridden by run target for QEMU)
+# Linker Script (default: board, overridden by qemu target for QEMU)
 LDSCRIPT ?= link.ld
 
 # Linking
@@ -45,8 +45,14 @@ $(TARGET).elf: $(OBJ_FILES)
 	@mkdir -p $(BUILD_DIR)
 	$(LD) -T $(LDSCRIPT) --no-warn-rwx-segments -o $(BUILD_DIR)/$(TARGET).elf $(OBJ_FILES)
 
+# initramfs: rootfs/ -> newc cpio (flat file names, no "./" prefix; the kernel's ramfs is flat)
+ROOTFS_FILES = $(wildcard rootfs/*)
+
+initramfs.cpio: $(ROOTFS_FILES)
+	cd rootfs && find . -type f -printf '%P\n' | sort | cpio -o -H newc > ../$@
+
 # Image Packaging: ELF -> Binary -> FIT
-$(TARGET).fit: $(TARGET).elf
+$(TARGET).fit: $(TARGET).elf initramfs.cpio
 	$(OBJCOPY) -O binary $(BUILD_DIR)/$(TARGET).elf $(TARGET)
 	$(MKIMAGE) -f $(TARGET).its $(TARGET).fit
 
@@ -60,20 +66,20 @@ $(BUILD_DIR)/%_s.o: $(SRC_DIR)/%.S
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Run Rule (QEMU Simulation)
-run: CFLAGS += -DQEMU
-run: LDSCRIPT = qemu.ld
-run: build
+# QEMU Simulation
+qemu: CFLAGS += -DQEMU
+qemu: LDSCRIPT = qemu.ld
+qemu: build
 	$(QEMU) -M virt -m 256M -kernel $(TARGET) -initrd initramfs.cpio -vnc :0 -serial stdio -device ramfb
 	# stdio 接 UART：手動 type 應該 char-by-char 進 shell；
 	# 如果 host terminal 在 cooked mode 沒看到 echo，按 Enter 仍會送整行進 QEMU。
-	# pipe 測試（stdin 來自 echo/printf）建議 (sleep 2; printf "...") | make run，
+	# pipe 測試（stdin 來自 echo/printf）建議 (sleep 2; printf "...") | make qemu，
 	# 否則 boot 早期 RX FIFO 還沒就緒會吃掉前幾個 char。
 	# 退出 QEMU：Ctrl-A X
 
 # Cleanup Rule
 clean:
-	rm -f $(TARGET) $(TARGET).fit
+	rm -f $(TARGET) $(TARGET).fit initramfs.cpio
 	rm -rf $(BUILD_DIR)
 
-.PHONY: build clean run
+.PHONY: build clean qemu
