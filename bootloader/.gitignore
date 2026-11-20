@@ -1,0 +1,4 @@
+build/
+bootloader
+bootloader.fit
+bootloader_board.its

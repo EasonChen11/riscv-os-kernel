@@ -1,0 +1,43 @@
+/dts-v1/;
+/ {
+    description = "OSC-2026 Bootloader FIT Image (board)";
+    #address-cells = <2>;
+    images {
+        kernel {
+            description = "Bootloader";
+            data = /incbin/("bootloader");
+            type = "kernel";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x0 0x00200000>;
+            entry = <0x0 0x00200000>;
+        };
+        ramdisk {
+            description = "Initial Ramdisk";
+            data = /incbin/("@INITRD@");
+            type = "ramdisk";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x0 0x46100000>;
+        };
+        fdt {
+            description = "Flat Device Tree";
+            data = /incbin/("x1_orangepi-rv2.dtb");
+            type = "flat_dt";
+            arch = "riscv";
+            compression = "none";
+            load = <0x0 0x31000000>;
+        };
+    };
+    configurations {
+        default = "config-1";
+        config-1 {
+            description = "OSC Bootloader (board, with embedded cpio)";
+            kernel = "kernel";
+            fdt = "fdt";
+            ramdisk = "ramdisk";
+        };
+    };
+};

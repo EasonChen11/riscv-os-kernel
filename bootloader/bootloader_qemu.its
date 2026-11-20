@@ -1,0 +1,24 @@
+/dts-v1/;
+/ {
+    description = "OSC-2026 Bootloader FIT Image";
+    #address-cells = <2>;
+    images {
+        kernel {
+            description = "Bootloader";
+            data = /incbin/("bootloader");
+            type = "kernel";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x0 0x80200000>;
+            entry = <0x0 0x80200000>;
+        };
+    };
+    configurations {
+        default = "config-1";
+        config-1 {
+            description = "OSC Bootloader";
+            kernel = "kernel";
+        };
+    };
+};
